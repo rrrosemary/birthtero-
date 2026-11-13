@@ -1,0 +1,4517 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0512">
+  <title>生日塔罗 · Birthday Arcana</title>
+  <link rel="icon"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23150a22'/%3E%3Cpath d='M32 9l5.2 17.8L55 32l-17.8 5.2L32 55l-5.2-17.8L9 32l17.8-5.2z' fill='%23e8ca8f'/%3E%3C/svg%3E">
+  <style>
+    /* 让进度圆环的自定义属性可以被平滑过渡（不支持时自动降级为瞬时更新） */
+    @property --progress {
+      syntax: "<percentage>";
+      inherits: false;
+      initial-value: 0%;
+    }
+
+    /* ============================================================
+       1. 设计变量与基础样式
+       ============================================================ */
+    :root {
+      --font-display: "Cormorant Garamond", "Bodoni 72", "Didot", "Times New Roman",
+        "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
+      --font-ui: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+        "Microsoft YaHei", sans-serif;
+
+      --ink: #f8f1ff;
+      --muted: #b9a6cf;
+      --muted-dim: rgba(220, 205, 237, 0.52);
+      --gold: #e8ca8f;
+      --gold-bright: #ffe9b9;
+      --violet: #b985ec;
+      --violet-bright: #e2c8ff;
+      --violet-deep: #6f3a9c;
+
+      --bg: #08040e;
+      --line: rgba(226, 201, 255, 0.16);
+      --line-gold: rgba(232, 202, 143, 0.22);
+
+      --card-radius: clamp(5px, 0.6vw, 10px);
+
+      /* 以下变量由 JS 根据 CONFIG 写入，便于集中调参 */
+      --card-aspect: 7 / 12;
+      --focus-lift: 26px;
+      --focus-scale: 1.04;
+      --focus-transition: 320ms;
+      --charge-duration: 1000ms;
+      --charge-ease: cubic-bezier(0.42, 0, 0.9, 0.45);
+      --veil-fade: 1000ms;
+      --veil-blur: 12px;
+      --reveal-z: 80;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      min-height: 100svh;
+      overflow: hidden;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: var(--font-ui);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+      cursor: default;
+    }
+
+    button,
+    a {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    ::selection {
+      color: #fff;
+      background: rgba(179, 120, 245, 0.38);
+    }
+
+    .sr-only {
+      position: absolute !important;
+      width: 1px !important;
+      height: 1px !important;
+      padding: 0 !important;
+      margin: -1px !important;
+      overflow: hidden !important;
+      clip: rect(0, 0, 0, 0) !important;
+      white-space: nowrap !important;
+      border: 0 !important;
+    }
+
+    /* ============================================================
+       2. 星空、光晕与页面框架
+       ============================================================ */
+    .ambient {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse 80% 58% at 50% 16%, rgba(93, 42, 145, 0.34), transparent 64%),
+        radial-gradient(ellipse 56% 48% at 12% 62%, rgba(72, 27, 107, 0.2), transparent 74%),
+        radial-gradient(ellipse 50% 42% at 90% 48%, rgba(85, 36, 124, 0.16), transparent 74%),
+        linear-gradient(180deg, #0c0614 0%, #11071d 40%, #07030c 100%);
+    }
+
+    .ambient__veil {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 50% 45%, transparent 22%, rgba(5, 2, 9, 0.16) 64%, rgba(3, 1, 6, 0.62) 100%),
+        linear-gradient(180deg, rgba(5, 2, 9, 0.08), transparent 26%, transparent 76%, rgba(5, 2, 9, 0.5));
+    }
+
+    .ambient__grain {
+      position: absolute;
+      inset: 0;
+      opacity: 0.036;
+      mix-blend-mode: soft-light;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.7'/%3E%3C/svg%3E");
+    }
+
+    .aurora {
+      position: absolute;
+      border-radius: 50%;
+      pointer-events: none;
+      filter: blur(70px);
+      opacity: 0.55;
+      transform: translate3d(0, 0, 0);
+      animation: auroraDrift 18s ease-in-out infinite alternate;
+    }
+
+    .aurora--one {
+      top: -24vmax;
+      left: 12vw;
+      width: 76vmax;
+      height: 48vmax;
+      background: radial-gradient(ellipse, rgba(126, 58, 191, 0.25), transparent 67%);
+    }
+
+    .aurora--two {
+      right: -22vmax;
+      bottom: -18vmax;
+      width: 64vmax;
+      height: 54vmax;
+      background: radial-gradient(ellipse, rgba(84, 32, 137, 0.22), transparent 66%);
+      animation-delay: -7s;
+      animation-duration: 23s;
+    }
+
+    .aurora--three {
+      left: 26vw;
+      bottom: -26vmax;
+      width: 70vmax;
+      height: 44vmax;
+      background: radial-gradient(ellipse, rgba(60, 24, 104, 0.24), transparent 64%);
+      animation-delay: -12s;
+      animation-duration: 27s;
+    }
+
+    .starfield {
+      position: absolute;
+      inset: 0;
+    }
+
+    .star {
+      position: absolute;
+      left: var(--x);
+      top: var(--y);
+      width: var(--s);
+      height: var(--s);
+      border-radius: 50%;
+      background: #fff9ef;
+      opacity: var(--o);
+      box-shadow: 0 0 calc(var(--s) * 4) rgba(228, 211, 255, 0.62);
+      animation: twinkle var(--t) ease-in-out var(--d) infinite alternate;
+      will-change: opacity, transform;
+    }
+
+    .star--spark {
+      border-radius: 0;
+      background: linear-gradient(90deg, transparent 42%, rgba(255, 247, 227, 0.85) 50%, transparent 58%),
+        linear-gradient(180deg, transparent 42%, rgba(255, 247, 227, 0.85) 50%, transparent 58%);
+      box-shadow: none;
+    }
+
+    .page-frame {
+      position: fixed;
+      inset: clamp(13px, 2.1vw, 28px);
+      z-index: 45;
+      border: 1px solid rgba(226, 198, 141, 0.12);
+      pointer-events: none;
+    }
+
+    .page-frame::before,
+    .page-frame::after {
+      content: "";
+      position: absolute;
+      width: clamp(18px, 3vw, 42px);
+      height: clamp(18px, 3vw, 42px);
+      border-color: rgba(236, 207, 150, 0.32);
+      border-style: solid;
+    }
+
+    .page-frame::before {
+      top: -1px;
+      left: -1px;
+      border-width: 1px 0 0 1px;
+    }
+
+    .page-frame::after {
+      right: -1px;
+      bottom: -1px;
+      border-width: 0 1px 1px 0;
+    }
+
+
+    /* ============================================================
+       3. 页面主结构
+       ============================================================ */
+    .app {
+      position: relative;
+      width: 100%;
+      height: 100svh;
+      min-height: 540px;
+    }
+
+    .topbar {
+      position: relative;
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding:
+        max(24px, env(safe-area-inset-top)) clamp(22px, 4.2vw, 64px) 0;
+      opacity: 0;
+      animation: uiIn 1.15s cubic-bezier(0.16, 0.84, 0.24, 1) 0.12s forwards;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      color: var(--gold);
+    }
+
+    .brand__sigil {
+      display: grid;
+      flex: 0 0 auto;
+      width: clamp(30px, 2.8vw, 40px);
+      height: clamp(30px, 2.8vw, 40px);
+      place-items: center;
+      border: 1px solid rgba(231, 202, 143, 0.34);
+      border-radius: 50%;
+      color: var(--gold-bright);
+      font-size: 12px;
+      box-shadow:
+        inset 0 0 18px rgba(211, 167, 255, 0.08),
+        0 0 22px rgba(125, 65, 190, 0.12);
+    }
+
+    .brand__text {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      line-height: 1;
+    }
+
+    .brand__text strong {
+      font-family: var(--font-display);
+      font-size: clamp(0.82rem, 1.05vw, 1rem);
+      font-weight: 500;
+      letter-spacing: 0.38em;
+    }
+
+    .brand__text span {
+      color: rgba(217, 197, 236, 0.48);
+      font-size: clamp(0.48rem, 0.58vw, 0.58rem);
+      letter-spacing: 0.26em;
+      white-space: nowrap;
+    }
+
+    .progress {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 11px;
+      padding: 7px 16px 7px 8px;
+      border: 1px solid rgba(222, 196, 255, 0.14);
+      border-radius: 999px;
+      background: rgba(16, 7, 27, 0.34);
+      box-shadow: inset 0 0 24px rgba(160, 93, 235, 0.04);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+
+    .progress__orb {
+      position: relative;
+      display: grid;
+      flex: 0 0 auto;
+      width: clamp(32px, 3vw, 38px);
+      height: clamp(32px, 3vw, 38px);
+      place-items: center;
+    }
+
+    .progress__ring {
+      --progress: 0%;
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: conic-gradient(from -90deg, var(--gold) var(--progress), rgba(218, 198, 240, 0.12) 0);
+      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1px));
+      mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1px));
+      transition: --progress 0.6s ease;
+    }
+
+    .progress__star {
+      color: var(--gold-bright);
+      font-size: 10px;
+      text-shadow: 0 0 12px rgba(255, 224, 165, 0.55);
+    }
+
+    .progress__copy {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .progress__copy>span {
+      color: rgba(218, 199, 237, 0.48);
+      font-size: clamp(0.47rem, 0.56vw, 0.56rem);
+      letter-spacing: 0.26em;
+    }
+
+    .progress__count {
+      color: rgba(248, 240, 255, 0.86);
+      font-family: var(--font-display);
+      font-size: clamp(0.72rem, 0.9vw, 0.9rem);
+      font-weight: 500;
+      letter-spacing: 0.06em;
+    }
+
+    .progress__count b {
+      color: var(--gold-bright);
+      font-weight: 600;
+    }
+
+    .hero {
+      position: relative;
+      z-index: 25;
+      padding: clamp(26px, 6.2vh, 74px) 24px 0;
+      text-align: center;
+      pointer-events: none;
+      opacity: 0;
+      animation: uiIn 1.3s cubic-bezier(0.16, 0.84, 0.24, 1) 0.24s forwards;
+    }
+
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(13px, 2vw, 22px);
+      margin: 0 0 clamp(12px, 2.1vh, 22px);
+      color: rgba(232, 202, 143, 0.8);
+      font-size: clamp(0.52rem, 0.66vw, 0.66rem);
+      letter-spacing: 0.47em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before,
+    .eyebrow::after {
+      content: "";
+      width: clamp(28px, 6vw, 78px);
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(230, 201, 148, 0.46));
+    }
+
+    .eyebrow::after {
+      transform: scaleX(-1);
+    }
+
+    .hero h1 {
+      margin: 0;
+      color: #faf2ff;
+      font-family: var(--font-display);
+      font-size: clamp(2.45rem, 5.45vw, 5.5rem);
+      font-weight: 400;
+      letter-spacing: 0.055em;
+      line-height: 1.08;
+      text-indent: 0.055em;
+      text-wrap: balance;
+      text-shadow:
+        0 0 28px rgba(212, 176, 255, 0.2),
+        0 0 90px rgba(119, 55, 186, 0.24);
+    }
+
+    .hero h1 em {
+      color: transparent;
+      background: linear-gradient(112deg, #fff7e3 5%, #e9cc94 34%, #c79cf2 68%, #f5e9ff 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      font-style: normal;
+      filter: drop-shadow(0 0 20px rgba(217, 175, 255, 0.22));
+    }
+
+    .hero__sub {
+      margin: clamp(14px, 2.1vh, 22px) auto 0;
+      color: rgba(211, 193, 230, 0.58);
+      font-size: clamp(0.65rem, 0.78vw, 0.78rem);
+      letter-spacing: 0.18em;
+      line-height: 1.9;
+    }
+
+    .hero__hint {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      min-height: 22px;
+      margin: clamp(13px, 2.2vh, 23px) auto 0;
+      color: rgba(232, 220, 245, 0.7);
+      font-size: clamp(0.66rem, 0.78vw, 0.78rem);
+      letter-spacing: 0.16em;
+      transition: color 0.28s ease, opacity 0.28s ease;
+    }
+
+    .hero__hint .hint-star {
+      color: var(--gold);
+      font-size: 0.67em;
+      text-shadow: 0 0 14px rgba(232, 202, 143, 0.42);
+    }
+
+    .hero__hint.is-nudged {
+      color: #e9cdf8;
+      animation: hintNudge 0.48s ease;
+    }
+
+    .hero::after {
+      content: "";
+      display: block;
+      width: 1px;
+      height: clamp(36px, 7vh, 74px);
+      margin: clamp(16px, 3vh, 30px) auto 0;
+      background: linear-gradient(180deg, rgba(232, 202, 143, 0.22), rgba(232, 202, 143, 0));
+    }
+
+    .footbar {
+      position: fixed;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      z-index: 20;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      padding:
+        0 clamp(24px, 4.2vw, 64px) max(22px, env(safe-area-inset-bottom));
+      color: rgba(218, 202, 235, 0.34);
+      font-size: clamp(0.47rem, 0.56vw, 0.56rem);
+      letter-spacing: 0.22em;
+      pointer-events: none;
+      opacity: 0;
+      animation: uiIn 1.2s cubic-bezier(0.16, 0.84, 0.24, 1) 0.8s forwards;
+    }
+
+    .footbar__hints {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      white-space: nowrap;
+    }
+
+    .footbar__hints b {
+      color: rgba(232, 202, 143, 0.56);
+      font-weight: 500;
+      letter-spacing: 0.18em;
+    }
+
+    .footbar__dot {
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      background: rgba(224, 201, 246, 0.32);
+    }
+
+    .footbar__rite {
+      color: rgba(231, 205, 153, 0.34);
+      white-space: nowrap;
+    }
+
+    /* ============================================================
+       4. 扇形牌阵与卡牌
+       ============================================================ */
+    .card-stage {
+      position: fixed;
+      inset: 0;
+      z-index: auto;
+      pointer-events: none;
+    }
+
+    .arc-halo {
+      position: absolute;
+      top: 62%;
+      left: 50%;
+      width: 110vw;
+      height: 42vh;
+      background:
+        radial-gradient(ellipse at 50% 48%, rgba(143, 76, 218, 0.22), transparent 62%),
+        radial-gradient(ellipse at 50% 54%, rgba(232, 202, 143, 0.065), transparent 45%);
+      filter: blur(18px);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    .celestial-seal {
+      position: absolute;
+      top: 55%;
+      left: 50%;
+      width: clamp(220px, 39vmin, 430px);
+      aspect-ratio: 1;
+      border: 1px solid rgba(229, 201, 147, 0.09);
+      border-radius: 50%;
+      opacity: 0.72;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+    }
+
+    .celestial-seal::before,
+    .celestial-seal::after {
+      content: "";
+      position: absolute;
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    .celestial-seal::before {
+      inset: 8.5%;
+      border: 1px dashed rgba(202, 168, 239, 0.11);
+    }
+
+    .celestial-seal::after {
+      inset: 22%;
+      border: 1px solid rgba(229, 201, 147, 0.08);
+      box-shadow:
+        inset 0 0 40px rgba(132, 72, 201, 0.06),
+        0 0 50px rgba(132, 72, 201, 0.035);
+    }
+
+    .celestial-seal__cross {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      background: linear-gradient(90deg, transparent, rgba(231, 205, 153, 0.11), transparent);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    .celestial-seal__cross--h {
+      width: 118%;
+      height: 1px;
+    }
+
+    .celestial-seal__cross--v {
+      width: 1px;
+      height: 118%;
+      background: linear-gradient(180deg, transparent, rgba(231, 205, 153, 0.11), transparent);
+    }
+
+    .celestial-seal__core {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      color: rgba(246, 221, 169, 0.26);
+      font-size: clamp(11px, 1.6vmin, 17px);
+      text-shadow: 0 0 22px rgba(196, 142, 255, 0.24);
+      transform: translate(-50%, -50%);
+    }
+
+    .arc-orbit {
+      position: absolute;
+      border-radius: 50%;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+    }
+
+    .arc-orbit--outer {
+      border: 1px solid rgba(216, 185, 255, 0.08);
+      box-shadow: 0 0 90px rgba(117, 61, 183, 0.035);
+    }
+
+    .arc-orbit--inner {
+      border: 1px solid rgba(233, 204, 147, 0.05);
+    }
+
+    .cards {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+
+      /* [转盘] 弧形渐隐遮罩：以弧顶为圆心，越远离弧顶越透明。
+         只作用在这一层，不影响光环、同心圆环等其它部分；
+         内 / 外半径由 layoutRing() 按当前转盘半径写入。 */
+      -webkit-mask-image: radial-gradient(circle at 50% var(--mask-apex-y, 62%),
+          #000 0,
+          #000 var(--mask-inner, 600px),
+          transparent var(--mask-outer, 820px));
+      mask-image: radial-gradient(circle at 50% var(--mask-apex-y, 62%),
+          #000 0,
+          #000 var(--mask-inner, 600px),
+          transparent var(--mask-outer, 820px));
+    }
+
+    /* 转盘本体：0×0 的“圆盘”。每帧只改它的 rotate(),
+       16 张牌固定在盘上（位置只在 layoutRing() 里算一次）。 */
+    .ring {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 0;
+      height: 0;
+      transform-origin: 0 0;
+      will-change: transform;
+    }
+
+    /* 外层 button 是稳定不动的鼠标命中区；内层 __float 负责浮起和放大 */
+    .card {
+      --rx: 0px;
+      --ry: 0px;
+      --ra: 0deg;
+      --lift: 0px;
+      --hover-scale: 1;
+      --order: 1;
+
+      position: absolute;
+      display: block;
+      width: 100px;
+      aspect-ratio: var(--card-aspect);
+      padding: 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: initial;
+      /* 静态位置来自圆盘坐标（--rx/--ry 是牌心的盘上坐标，--ra 是朝向）：
+         先把左上角偏移到“牌心 = (rx,ry)”，再绕自身中心旋转；
+         全局旋转由 .ring 承担。 */
+      transform:
+        translate(calc(var(--rx) - 50%), calc(var(--ry) - 50%)) rotate(var(--ra));
+      transform-origin: 50% 50%;
+      transition: transform var(--focus-transition) cubic-bezier(0.16, 0.84, 0.24, 1);
+      cursor: pointer;
+      pointer-events: auto;
+      z-index: var(--order);
+      perspective: 1000px;
+      will-change: transform;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    /* [转盘] 牌固定在盘上，位置不逐帧变化，transform 不需要补间 */
+    .cards .card {
+      transition: none;
+    }
+
+    .ring .card {
+      left: 0;
+      top: 0;
+    }
+
+    /* 仅初始化时使用的入场动画。动画结束后移除该类，
+       避免卡牌被移到 body 再放回时重新播放、短暂消失。 */
+    .card--entering {
+      animation: cardAppear 0.9s cubic-bezier(0.16, 0.84, 0.24, 1) backwards;
+      animation-delay: calc(var(--i) * 58ms + 380ms);
+    }
+
+    .card__float {
+      position: absolute;
+      inset: 0;
+      display: block;
+      transform:
+        translateY(calc(var(--lift) * -1)) scale(var(--hover-scale));
+      transform-origin: 50% 50%;
+      transition: transform var(--focus-transition) cubic-bezier(0.16, 0.84, 0.24, 1);
+      perspective: 1000px;
+      will-change: transform;
+    }
+
+    .card.is-focused {
+      --lift: var(--focus-lift);
+      --hover-scale: var(--focus-scale);
+      z-index: 40;
+    }
+
+    .card__glow,
+    .card__ring {
+      position: absolute;
+      border-radius: calc(var(--card-radius) + 2px);
+      pointer-events: none;
+    }
+
+    .card__glow {
+      inset: -3px;
+      z-index: 7;
+      opacity: 0;
+      box-shadow:
+        0 0 0 1px rgba(250, 244, 255, 0.72),
+        0 0 14px 2px rgba(201, 155, 255, 0.52),
+        0 0 42px 9px rgba(140, 68, 226, 0.34),
+        0 0 92px 24px rgba(100, 40, 174, 0.16);
+    }
+
+    .card.is-focused .card__glow {
+      animation: cardCharge var(--charge-duration) var(--charge-ease) forwards;
+    }
+
+    .card__ring {
+      inset: -1px;
+      z-index: 8;
+      border: 1px solid rgba(239, 226, 255, 0.66);
+      opacity: 0;
+      transition: opacity 0.12s ease, border-color 0.2s ease;
+    }
+
+    .card.is-focused .card__ring {
+      opacity: 0.92;
+      border-color: rgba(247, 239, 255, 0.9);
+    }
+
+    .card.is-focused .card__face--back {
+      box-shadow:
+        inset 0 0 0 1px rgba(210, 177, 255, 0.14),
+        0 22px 38px rgba(0, 0, 0, 0.64),
+        0 4px 9px rgba(0, 0, 0, 0.46);
+    }
+
+    .card.is-ready .card__ring {
+      border-color: rgba(255, 250, 255, 0.98);
+      box-shadow: 0 0 16px rgba(225, 190, 255, 0.26);
+    }
+
+    .card.is-current .card__glow {
+      opacity: 1;
+      animation: none;
+    }
+
+    .card.is-current .card__ring {
+      opacity: 1;
+      border-color: rgba(249, 242, 255, 0.9);
+    }
+
+    .card:focus-visible .card__ring {
+      opacity: 0.9;
+    }
+
+    .card__inner {
+      position: absolute;
+      inset: 0;
+      display: block;
+      transform-style: preserve-3d;
+      /* 翻牌由 JS 的 Web Animations 统一驱动，开牌与收牌共用同一套动画 */
+      transition: none;
+      will-change: transform;
+    }
+
+    .card.is-flipped .card__inner {
+      transform: rotateY(180deg);
+    }
+
+    .card__face {
+      position: absolute;
+      inset: 0;
+      display: block;
+      overflow: hidden;
+      border-radius: var(--card-radius);
+      -webkit-backface-visibility: hidden;
+      backface-visibility: hidden;
+    }
+
+    /* ---------- 卡背 ---------- */
+    .card__face--back {
+      border: 1px solid rgba(232, 204, 148, 0.42);
+      background: #0d0714;
+      box-shadow:
+        inset 0 0 0 1px rgba(210, 177, 255, 0.1),
+        0 12px 26px rgba(0, 0, 0, 0.48),
+        0 2px 5px rgba(0, 0, 0, 0.38);
+      transition: border-color 0.35s ease, box-shadow 0.35s ease;
+    }
+
+    .card__back-img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: 50% 50%;
+      filter: brightness(0.78) contrast(1.08) saturate(0.84);
+      transform: scale(1.035);
+      transition: filter 0.35s ease;
+      -webkit-user-drag: none;
+      user-select: none;
+    }
+
+    .card__back-veil {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 50% 41%, rgba(139, 81, 210, 0.22), transparent 57%),
+        linear-gradient(160deg, rgba(89, 43, 135, 0.36), rgba(7, 3, 12, 0.12) 48%, rgba(39, 15, 62, 0.32));
+      mix-blend-mode: color;
+      opacity: 0.72;
+      transition: background 0.4s ease, opacity 0.4s ease;
+    }
+
+    .card__frame {
+      position: absolute;
+      inset: 4.2%;
+      border: 1px solid rgba(236, 208, 155, 0.36);
+      border-radius: calc(var(--card-radius) * 0.55);
+      box-shadow: inset 0 0 18px rgba(185, 120, 255, 0.08);
+      pointer-events: none;
+      transition: border-color 0.35s ease, box-shadow 0.35s ease;
+    }
+
+    .card__drawn-mark {
+      position: absolute;
+      top: 7%;
+      right: 7%;
+      width: 18%;
+      aspect-ratio: 1;
+      opacity: 0;
+      background: linear-gradient(135deg, #fff0c5, #dca95f 58%, #f8e1a5);
+      clip-path: polygon(50% 0%, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0% 50%, 40% 40%);
+      filter: drop-shadow(0 0 5px rgba(249, 206, 122, 0.75));
+      transform: rotate(-18deg) scale(0.5);
+      transition: opacity 0.4s ease, transform 0.55s cubic-bezier(0.18, 0.89, 0.32, 1.25);
+      pointer-events: none;
+    }
+
+    .card.is-drawn .card__face--back {
+      border-color: rgba(245, 205, 126, 0.68);
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 225, 163, 0.14),
+        0 12px 26px rgba(0, 0, 0, 0.44),
+        0 0 24px rgba(220, 167, 82, 0.1);
+    }
+
+    .card.is-drawn .card__back-img {
+      filter: brightness(0.96) contrast(1.06) saturate(1.06) sepia(0.16);
+    }
+
+    .card.is-drawn .card__back-veil {
+      background:
+        radial-gradient(circle at 50% 40%, rgba(255, 210, 124, 0.34), transparent 58%),
+        linear-gradient(155deg, rgba(188, 125, 50, 0.34), rgba(74, 34, 80, 0.18) 54%, rgba(245, 194, 107, 0.16));
+      mix-blend-mode: screen;
+      opacity: 0.64;
+    }
+
+    .card.is-drawn .card__frame {
+      border-color: rgba(252, 216, 144, 0.55);
+      box-shadow: inset 0 0 18px rgba(244, 187, 90, 0.1);
+    }
+
+    .card.is-drawn .card__drawn-mark {
+      opacity: 1;
+      transform: rotate(0deg) scale(1);
+    }
+
+    /* ---------- 卡面 ---------- */
+    .card__face--front {
+      padding: 0;
+      border: 1px solid rgba(239, 219, 255, 0.55);
+      background:
+        radial-gradient(circle at 24% 8%, rgba(178, 125, 246, 0.2), transparent 36%),
+        linear-gradient(153deg, rgba(67, 36, 94, 0.93) 0%, rgba(28, 12, 46, 0.94) 48%, rgba(11, 5, 20, 0.96) 100%);
+      box-shadow:
+        inset 0 0 44px rgba(174, 116, 255, 0.1),
+        0 0 0 1px rgba(199, 152, 255, 0.16),
+        0 28px 70px rgba(0, 0, 0, 0.55);
+      transform: rotateY(180deg);
+    }
+
+    .card__face--front::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background:
+        linear-gradient(115deg, rgba(255, 255, 255, 0.08), transparent 28%, transparent 70%, rgba(230, 198, 142, 0.055)),
+        radial-gradient(circle at 50% 120%, rgba(192, 131, 255, 0.14), transparent 48%);
+      pointer-events: none;
+    }
+
+    .card__face--front::after {
+      content: "";
+      position: absolute;
+      inset: 2.5%;
+      z-index: 3;
+      border: 1px solid rgba(240, 219, 255, 0.17);
+      border-radius: calc(var(--card-radius) * 0.45);
+      pointer-events: none;
+    }
+
+    .card__front-inner {
+      position: absolute;
+      inset: 4.4%;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      gap: 3.4%;
+      min-height: 0;
+    }
+
+    .card__photo {
+      position: relative;
+      display: block;
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
+      border-radius: calc(var(--card-radius) * 0.58);
+      background:
+        radial-gradient(circle at 50% 40%, rgba(106, 58, 153, 0.32), transparent 62%),
+        #160b22;
+      box-shadow: inset 0 0 0 1px rgba(238, 217, 255, 0.14);
+    }
+
+    .card__photo img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: 50% 50%;
+      -webkit-user-drag: none;
+      user-select: none;
+    }
+
+    .card__photo::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(180deg, rgba(10, 3, 18, 0.02) 48%, rgba(10, 3, 18, 0.33) 100%),
+        radial-gradient(circle at 50% 50%, transparent 54%, rgba(8, 3, 14, 0.18) 100%);
+      pointer-events: none;
+    }
+
+    /* 卡牌下半部分：标题 + 正文，统一左对齐 */
+    .card__caption {
+      display: flex;
+      flex: 0 0 25%;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 4%;
+      min-height: 0;
+      padding: 0 4%;
+      overflow: hidden;
+      border-radius: calc(var(--card-radius) * 0.5);
+      background:
+        linear-gradient(90deg, transparent, rgba(225, 198, 255, 0.1) 22%, rgba(225, 198, 255, 0.1) 78%, transparent);
+      box-shadow: inset 0 1px rgba(237, 215, 255, 0.08);
+      color: #fff3dc;
+      text-align: left;
+      container-type: inline-size;
+    }
+
+    .card__caption-head {
+      display: flex;
+      align-items: baseline;
+      gap: 0.6em;
+      max-width: 100%;
+      min-width: 0;
+    }
+
+    .card__caption-star {
+      flex: 0 0 auto;
+      color: var(--gold);
+      font-size: 4.00cqw;
+      line-height: 1;
+      text-shadow: 0 0 6px rgba(239, 201, 129, 0.5);
+    }
+
+    .card__text {
+      display: block;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
+      font-family: var(--font-display);
+      font-size: 6.4cqw;
+      font-weight: 500;
+      line-height: 1.1;
+      letter-spacing: 0.12em;
+      text-indent: 0.12em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-shadow:
+        0 0 12px rgba(255, 233, 192, 0.32),
+        0 0 26px rgba(207, 159, 255, 0.18);
+    }
+
+    /* [内容] 正文：和标题一起放在卡牌下半部分；小牌上不显示，翻开成大卡才出现 */
+    .card__body {
+      display: none;
+      max-width: 100%;
+      overflow: hidden;
+      color: rgba(236, 222, 250, 0.88);
+      font-family: var(--font-ui);
+      font-size: 4.1cqw;
+      line-height: 1.65;
+      letter-spacing: 0.03em;
+      text-align: left;
+      white-space: pre-line;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 4;
+    }
+
+    .card--displayed .card__body {
+      display: -webkit-box;
+      animation: bodyIn 0.5s ease 0.05s both;
+    }
+
+    .card__caption-sub {
+      align-self: stretch;
+      margin-top: 1%;
+      color: rgba(230, 207, 247, 0.4);
+      font-family: var(--font-ui);
+      font-size: 1.72cqw;
+      letter-spacing: 0.22em;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    /* ---------- 抽取 / 展示 / 归位 ---------- */
+    .card--flying,
+    .card--displayed,
+    .card--returning {
+      transition: none;
+      z-index: var(--reveal-z);
+    }
+
+    .card--flying,
+    .card--displayed,
+    .card--returning,
+    .card--flying .card__float,
+    .card--displayed .card__float,
+    .card--returning .card__float {
+      will-change: transform;
+    }
+
+    .card--flying .card__float,
+    .card--displayed .card__float,
+    .card--returning .card__float {
+      --lift: 0px;
+      --hover-scale: 1;
+      transition: none;
+    }
+
+    .card--flying {
+      position: fixed;
+      cursor: default;
+    }
+
+    .card--displayed {
+      position: fixed;
+      cursor: default;
+    }
+
+    .card--returning {
+      position: fixed;
+      cursor: default;
+    }
+
+    .card--displayed .card__ring,
+    .card--returning .card__ring {
+      opacity: 1;
+    }
+
+    .card--displayed .card__face--front {
+      box-shadow:
+        inset 0 0 54px rgba(174, 116, 255, 0.12),
+        0 0 0 1px rgba(231, 208, 255, 0.24),
+        0 35px 100px rgba(0, 0, 0, 0.68),
+        0 0 90px rgba(132, 67, 207, 0.2);
+    }
+
+    .card.is-impatient .card__ring {
+      animation: impatientRing 0.5s ease;
+    }
+
+    /* ============================================================
+       5. 暗场遮罩与展示提示
+       ============================================================ */
+    .veil {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 50% 48%, rgba(32, 14, 50, 0.24) 0%, rgba(8, 3, 15, 0.58) 54%, rgba(3, 1, 6, 0.8) 100%),
+        rgba(8, 3, 14, 0.42);
+      backdrop-filter: blur(var(--veil-blur));
+      -webkit-backdrop-filter: blur(var(--veil-blur));
+      transition:
+        opacity var(--veil-fade) ease,
+        visibility 0s linear var(--veil-fade);
+    }
+
+    .veil.is-visible {
+      opacity: 1;
+      visibility: visible;
+      transition:
+        opacity var(--veil-fade) ease,
+        visibility 0s linear 0s;
+    }
+
+    .reveal-hint {
+      position: fixed;
+      left: 50%;
+      bottom: clamp(38px, 6.5vh, 70px);
+      z-index: 70;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      color: rgba(225, 208, 242, 0.55);
+      font-size: clamp(0.58rem, 0.72vw, 0.72rem);
+      letter-spacing: 0.24em;
+      line-height: 1.5;
+      text-align: center;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, 9px);
+      transition: opacity 0.55s ease, transform 0.55s ease;
+    }
+
+    .reveal-hint::before {
+      content: "";
+      width: 44px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(232, 202, 143, 0.42), transparent);
+    }
+
+    .reveal-hint.is-visible {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    .reveal-hint b {
+      color: rgba(247, 232, 206, 0.8);
+      font-weight: 400;
+    }
+
+    body.is-revealed .card:not(.is-current) {
+      pointer-events: none;
+    }
+
+    /* ============================================================
+       [阶段二] 光点：隐藏系统光标 + 跟随鼠标的紫色光点
+       ------------------------------------------------------------
+       body.is-pointer-active 只在光点可见（鼠标在页面内）时加上，
+       鼠标移出 / 窗口失焦时移除，系统光标自动恢复默认。
+       ============================================================ */
+    body.is-pointer-active,
+    body.is-pointer-active * {
+      cursor: none !important;
+    }
+
+    .pointer-glow {
+      position: fixed;
+      top: 0;
+      left: 0;
+      /* 比所有弹窗都高：鼠标模式下系统光标已隐藏，光点被盖住就等于失去指针 */
+      z-index: 300;
+      width: 46px;
+      height: 46px;
+      margin: -23px 0 0 -23px;
+      border-radius: 50%;
+      opacity: 0;
+      background:
+        radial-gradient(circle,
+          rgba(255, 251, 255, 0.98) 0%,
+          rgba(237, 219, 255, 0.9) 13%,
+          rgba(196, 148, 244, 0.66) 32%,
+          rgba(139, 82, 208, 0.28) 60%,
+          rgba(104, 52, 168, 0) 100%);
+      box-shadow:
+        0 0 16px 3px rgba(185, 133, 236, 0.4),
+        0 0 42px 12px rgba(126, 70, 194, 0.22);
+      pointer-events: none;
+      transition: opacity 0.24s ease;
+      will-change: transform;
+      transform: translate3d(-100px, -100px, 0);
+    }
+
+    /* 外圈细环，让光点在深色背景上也有“实体感” */
+    .pointer-glow::before {
+      content: "";
+      position: absolute;
+      inset: -8px;
+      border: 1px solid rgba(220, 190, 255, 0.2);
+      border-radius: 50%;
+    }
+
+    .pointer-glow.is-visible {
+      opacity: 1;
+    }
+
+    /* ============================================================
+       [阶段三] 左上角摄像头预览窗 + 模式切换
+       ------------------------------------------------------------
+       小窗宽 180~220px、固定 4:3；视频与骨架画布都做 scaleX(-1) 镜像，
+       看到的方向和抬手方向一致。面板悬浮在毛玻璃遮罩之上，
+       展示态也能看见自己的手。
+       ============================================================ */
+    .hand-panel {
+      position: fixed;
+      top: clamp(70px, 10vh, 104px);
+      left: clamp(16px, 2.4vw, 30px);
+      z-index: 68;
+      width: clamp(180px, 15vw, 220px);
+      padding: 9px 9px 10px;
+      border: 1px solid rgba(198, 152, 246, 0.22);
+      border-radius: 14px;
+      /* 这里刻意不用 backdrop-filter：小窗里的视频和骨架画布每帧都在刷新，
+         blur 会跟着每帧重算，手势模式下白白吃掉 GPU，转盘更容易掉帧 */
+      background: rgba(13, 6, 22, 0.74);
+      box-shadow:
+        0 18px 44px rgba(0, 0, 0, 0.42),
+        inset 0 0 26px rgba(148, 88, 218, 0.07);
+      color: rgba(233, 219, 250, 0.78);
+      font-size: clamp(0.5rem, 0.58vw, 0.56rem);
+      letter-spacing: 0.12em;
+      transition: opacity 0.3s ease, border-color 0.3s ease;
+    }
+
+    /* 需要点切换按钮，这里把系统光标还回来；页面其它区域仍然隐藏 */
+    body.is-pointer-active .hand-panel,
+    body.is-pointer-active .hand-panel * {
+      cursor: default !important;
+    }
+
+    body.is-pointer-active .hand-panel__btn {
+      cursor: pointer !important;
+    }
+
+    .hand-panel__bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .hand-panel__status {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: rgba(226, 200, 255, 0.82);
+      white-space: nowrap;
+    }
+
+    .hand-panel__status::before {
+      content: "";
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--violet-bright);
+      box-shadow: 0 0 8px rgba(214, 176, 255, 0.8);
+    }
+
+    .hand-panel.is-loading .hand-panel__status::before {
+      background: var(--gold);
+      box-shadow: 0 0 8px rgba(232, 202, 143, 0.8);
+      animation: handPulse 1.1s ease-in-out infinite;
+    }
+
+    .hand-panel.is-failed {
+      border-color: rgba(232, 163, 143, 0.28);
+    }
+
+    .hand-panel.is-failed .hand-panel__status::before {
+      background: #e8a08f;
+      box-shadow: 0 0 8px rgba(232, 160, 143, 0.7);
+    }
+
+    .hand-panel__switch {
+      display: flex;
+      gap: 3px;
+      padding: 2px;
+      border: 1px solid rgba(226, 201, 255, 0.16);
+      border-radius: 999px;
+      background: rgba(10, 4, 18, 0.5);
+    }
+
+    .hand-panel__btn {
+      padding: 3px 8px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: rgba(226, 205, 246, 0.55);
+      font: inherit;
+      font-size: 0.94em;
+      letter-spacing: 0.1em;
+      transition: color 0.2s ease, background 0.2s ease;
+    }
+
+    .hand-panel__btn.is-active {
+      color: #1b0d26;
+      background: linear-gradient(115deg, #f0dcc0, #cba6ea);
+    }
+
+    .hand-panel__btn:focus-visible {
+      outline: 1px solid rgba(238, 216, 255, 0.8);
+      outline-offset: 2px;
+    }
+
+    .hand-panel__stage {
+      position: relative;
+      overflow: hidden;
+      aspect-ratio: 4 / 3;
+      border: 1px solid rgba(206, 165, 250, 0.18);
+      border-radius: 10px;
+      background:
+        radial-gradient(circle at 50% 38%, rgba(120, 66, 180, 0.28), transparent 70%),
+        #0a0412;
+    }
+
+    .hand-panel__video,
+    .hand-panel__canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      transform: scaleX(-1);
+    }
+
+    .hand-panel__video {
+      object-fit: cover;
+      background: #0a0412;
+    }
+
+    .hand-panel__canvas {
+      pointer-events: none;
+    }
+
+    .hand-panel__loading {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      align-items: center;
+      justify-content: center;
+      color: rgba(226, 206, 247, 0.72);
+      background: rgba(9, 4, 15, 0.62);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+
+    /* [阶段三] 预览窗左下角的实时判定：让人一眼看出“它到底看到了什么” */
+    .hand-panel__gesture {
+      position: absolute;
+      left: 7px;
+      bottom: 7px;
+      padding: 2px 7px;
+      border: 1px solid rgba(206, 168, 255, 0.22);
+      border-radius: 999px;
+      background: rgba(9, 4, 16, 0.66);
+      color: rgba(226, 206, 247, 0.6);
+      font-size: 0.9em;
+      letter-spacing: 0.1em;
+      line-height: 1.6;
+      pointer-events: none;
+      transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    }
+
+    .hand-panel__gesture.is-fist {
+      color: #ffe1b8;
+      border-color: rgba(232, 202, 143, 0.5);
+      background: rgba(48, 30, 12, 0.62);
+    }
+
+    .hand-panel__gesture.is-open {
+      color: #e6d0ff;
+      border-color: rgba(198, 152, 246, 0.55);
+      background: rgba(34, 18, 52, 0.66);
+    }
+
+    .hand-panel.is-loading .hand-panel__loading {
+      opacity: 1;
+    }
+
+    .hand-panel__spinner {
+      width: 18px;
+      height: 18px;
+      border: 1px solid rgba(226, 200, 255, 0.18);
+      border-top-color: var(--violet-bright);
+      border-radius: 50%;
+      animation: handSpin 0.9s linear infinite;
+    }
+
+    .hand-panel__hint {
+      margin: 8px 2px 0;
+      color: rgba(214, 196, 236, 0.5);
+      font-size: 0.94em;
+      line-height: 1.6;
+      letter-spacing: 0.08em;
+    }
+
+    .hand-panel.is-mouse .hand-panel__stage {
+      display: none;
+    }
+
+    .hand-panel.is-mouse .hand-panel__hint {
+      color: rgba(226, 205, 246, 0.68);
+    }
+
+    @keyframes handSpin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes handPulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.35;
+      }
+    }
+
+    /* ============================================================
+       6. 完成弹窗
+       ============================================================ */
+    .completion {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      display: grid;
+      padding: 24px;
+      place-items: center;
+      background:
+        radial-gradient(circle at 50% 45%, rgba(63, 27, 99, 0.2), transparent 48%),
+        rgba(4, 1, 8, 0.58);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition:
+        opacity 0.55s ease,
+        visibility 0s linear 0.55s;
+    }
+
+    .completion.is-open {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transition:
+        opacity 0.55s ease,
+        visibility 0s linear 0s;
+    }
+
+    .completion__panel {
+      position: relative;
+      width: min(92vw, 570px);
+      padding: clamp(32px, 5vw, 58px) clamp(24px, 5vw, 58px) clamp(28px, 4.4vw, 48px);
+      overflow: hidden;
+      border: 1px solid rgba(230, 201, 255, 0.25);
+      border-radius: clamp(16px, 2vw, 24px);
+      background:
+        radial-gradient(circle at 50% -12%, rgba(151, 84, 226, 0.34), transparent 52%),
+        radial-gradient(circle at 50% 120%, rgba(215, 167, 82, 0.09), transparent 44%),
+        linear-gradient(155deg, rgba(34, 15, 54, 0.98), rgba(12, 5, 21, 0.985));
+      box-shadow:
+        inset 0 0 70px rgba(152, 88, 228, 0.09),
+        0 40px 120px rgba(0, 0, 0, 0.66);
+      text-align: center;
+      transform: translateY(24px) scale(0.965);
+      transition: transform 0.6s cubic-bezier(0.16, 0.84, 0.24, 1);
+    }
+
+    .completion.is-open .completion__panel {
+      transform: translateY(0) scale(1);
+    }
+
+    .completion__panel::before {
+      content: "";
+      position: absolute;
+      inset: 10px;
+      border: 1px solid rgba(239, 214, 255, 0.08);
+      border-radius: calc(clamp(16px, 2vw, 24px) - 6px);
+      pointer-events: none;
+    }
+
+    .completion__corner {
+      position: absolute;
+      width: 64px;
+      height: 64px;
+      border-color: rgba(234, 204, 145, 0.26);
+      border-style: solid;
+      pointer-events: none;
+    }
+
+    .completion__corner--tl {
+      top: 16px;
+      left: 16px;
+      border-width: 1px 0 0 1px;
+    }
+
+    .completion__corner--br {
+      right: 16px;
+      bottom: 16px;
+      border-width: 0 1px 1px 0;
+    }
+
+    .completion__crest {
+      display: grid;
+      width: 44px;
+      height: 44px;
+      margin: 0 auto clamp(17px, 2.4vh, 24px);
+      place-items: center;
+      border: 1px solid rgba(232, 202, 143, 0.36);
+      border-radius: 50%;
+      color: var(--gold-bright);
+      font-size: 15px;
+      box-shadow: 0 0 30px rgba(160, 99, 233, 0.18);
+    }
+
+    .completion__eyebrow {
+      margin: 0 0 12px;
+      color: rgba(230, 201, 145, 0.68);
+      font-size: 0.55rem;
+      letter-spacing: 0.46em;
+    }
+
+    .completion h2 {
+      margin: 0;
+      color: #f7ecff;
+      font-family: var(--font-display);
+      font-size: clamp(1.9rem, 4vw, 2.7rem);
+      font-weight: 400;
+      letter-spacing: 0.08em;
+      line-height: 1.2;
+      text-shadow: 0 0 32px rgba(205, 160, 255, 0.22);
+    }
+
+    .completion__divider {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 11px;
+      margin: clamp(20px, 3.1vh, 28px) auto;
+      color: rgba(232, 202, 143, 0.7);
+      font-size: 0.64rem;
+    }
+
+    .completion__divider span {
+      width: clamp(46px, 9vw, 82px);
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(232, 202, 143, 0.34));
+    }
+
+    .completion__divider span:last-child {
+      transform: scaleX(-1);
+    }
+
+    .completion__desc {
+      max-width: 390px;
+      margin: 0 auto;
+      color: rgba(235, 222, 249, 0.78);
+      font-family: var(--font-display);
+      font-size: clamp(1rem, 1.45vw, 1.18rem);
+      letter-spacing: 0.08em;
+      line-height: 1.7;
+    }
+
+    .completion__small {
+      max-width: 340px;
+      margin: 12px auto 0;
+      color: rgba(210, 190, 229, 0.48);
+      font-size: clamp(0.65rem, 0.78vw, 0.76rem);
+      letter-spacing: 0.11em;
+      line-height: 1.8;
+    }
+
+    .completion__actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-top: clamp(27px, 4vh, 38px);
+    }
+
+    .btn {
+      display: inline-flex;
+      min-height: 46px;
+      align-items: center;
+      justify-content: center;
+      padding: 0 clamp(20px, 2.4vw, 30px);
+      border-radius: 999px;
+      font-family: var(--font-ui);
+      font-size: clamp(0.7rem, 0.82vw, 0.8rem);
+      letter-spacing: 0.15em;
+      text-decoration: none;
+      transition:
+        transform 0.24s ease,
+        border-color 0.24s ease,
+        background 0.24s ease,
+        box-shadow 0.24s ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    .btn:focus-visible {
+      outline: 1px solid rgba(238, 216, 255, 0.88);
+      outline-offset: 4px;
+    }
+
+    .btn--primary {
+      border: 1px solid rgba(248, 224, 176, 0.52);
+      color: #24112f;
+      background:
+        linear-gradient(115deg, #fff2ce 0%, #e7c486 43%, #cb9dea 100%);
+      box-shadow:
+        0 10px 28px rgba(142, 80, 211, 0.2),
+        inset 0 1px rgba(255, 255, 255, 0.4);
+    }
+
+    .btn--primary:hover {
+      box-shadow:
+        0 14px 36px rgba(157, 92, 227, 0.35),
+        0 0 30px rgba(234, 201, 145, 0.16),
+        inset 0 1px rgba(255, 255, 255, 0.46);
+    }
+
+    .btn--ghost {
+      border: 1px solid rgba(226, 201, 255, 0.23);
+      color: rgba(240, 228, 251, 0.76);
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .btn--ghost:hover {
+      border-color: rgba(235, 214, 255, 0.44);
+      background: rgba(255, 255, 255, 0.055);
+    }
+
+    /* ============================================================
+       6.1 信弹窗 / “查看信”按钮
+       ------------------------------------------------------------
+       信弹窗沿用完成弹窗的紫色调；不设关闭按钮，点弹窗外空白处关闭。
+       按钮默认隐藏，完成弹窗首次出现后才解锁。
+       ============================================================ */
+    .letter-btn {
+      position: fixed;
+      top: clamp(94px, 12.4vh, 128px);
+      right: clamp(24px, 4.2vw, 64px);
+      z-index: 48;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      height: 34px;
+      padding: 0 16px;
+      border: 1px solid rgba(232, 202, 143, 0.3);
+      border-radius: 999px;
+      background: rgba(24, 12, 38, 0.52);
+      box-shadow: inset 0 0 18px rgba(160, 93, 235, 0.06);
+      color: rgba(248, 236, 214, 0.92);
+      font-family: var(--font-ui);
+      font-size: clamp(0.6rem, 0.72vw, 0.7rem);
+      letter-spacing: 0.2em;
+      cursor: pointer;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-6px);
+      transition:
+        opacity 0.4s ease,
+        transform 0.4s ease,
+        visibility 0s linear 0.4s,
+        border-color 0.25s ease,
+        background 0.25s ease;
+    }
+
+    .letter-btn.is-visible {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+      transition:
+        opacity 0.4s ease,
+        transform 0.4s ease,
+        visibility 0s linear 0s,
+        border-color 0.25s ease,
+        background 0.25s ease;
+    }
+
+    .letter-btn:hover {
+      border-color: rgba(240, 214, 160, 0.52);
+      background: rgba(42, 22, 62, 0.62);
+    }
+
+    .letter-btn:focus-visible {
+      outline: 1px solid rgba(238, 216, 255, 0.8);
+      outline-offset: 3px;
+    }
+
+    .letter {
+      position: fixed;
+      inset: 0;
+      z-index: 210;
+      display: grid;
+      padding: 24px;
+      place-items: center;
+      background:
+        radial-gradient(circle at 50% 42%, rgba(63, 27, 99, 0.24), transparent 50%),
+        rgba(4, 1, 8, 0.6);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition:
+        opacity 0.55s ease,
+        visibility 0s linear 0.55s;
+    }
+
+    .letter.is-open {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transition:
+        opacity 0.55s ease,
+        visibility 0s linear 0s;
+    }
+
+    .letter__panel {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      width: min(92vw, 600px);
+      max-height: min(84vh, 720px);
+      padding: clamp(30px, 4.4vw, 50px) clamp(24px, 4.4vw, 50px) clamp(24px, 3.6vw, 38px);
+      overflow: hidden;
+      border: 1px solid rgba(230, 201, 255, 0.25);
+      border-radius: clamp(16px, 2vw, 24px);
+      background:
+        radial-gradient(circle at 50% -14%, rgba(151, 84, 226, 0.32), transparent 54%),
+        radial-gradient(circle at 50% 118%, rgba(215, 167, 82, 0.08), transparent 46%),
+        linear-gradient(155deg, rgba(34, 15, 54, 0.98), rgba(12, 5, 21, 0.985));
+      box-shadow:
+        inset 0 0 70px rgba(152, 88, 228, 0.09),
+        0 40px 120px rgba(0, 0, 0, 0.66);
+      text-align: center;
+      transform: translateY(24px) scale(0.965);
+      transition: transform 0.6s cubic-bezier(0.16, 0.84, 0.24, 1);
+    }
+
+    .letter.is-open .letter__panel {
+      transform: translateY(0) scale(1);
+    }
+
+    .letter__panel::before {
+      content: "";
+      position: absolute;
+      inset: 10px;
+      border: 1px solid rgba(239, 214, 255, 0.08);
+      border-radius: calc(clamp(16px, 2vw, 24px) - 6px);
+      pointer-events: none;
+    }
+
+    .letter__panel:focus {
+      outline: none;
+    }
+
+    .letter__title {
+      margin: 0;
+      color: #f7ecff;
+      font-family: var(--font-display);
+      font-size: clamp(1.9rem, 4vw, 2.7rem);
+      font-weight: 400;
+      letter-spacing: 0.1em;
+      line-height: 1.2;
+      text-indent: 0.1em;
+      text-shadow: 0 0 32px rgba(205, 160, 255, 0.22);
+    }
+
+    .letter__scroll {
+      flex: 1 1 auto;
+      min-height: 0;
+      margin-top: clamp(16px, 2.6vh, 24px);
+      padding-right: 10px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      color: rgba(236, 224, 250, 0.82);
+      font-family: var(--font-display);
+      font-size: clamp(0.95rem, 1.32vw, 1.1rem);
+      letter-spacing: 0.07em;
+      line-height: 2.05;
+      text-align: left;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(184, 133, 236, 0.45) transparent;
+    }
+
+    .letter__scroll::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    .letter__scroll::-webkit-scrollbar-thumb {
+      border-radius: 99px;
+      background: rgba(184, 133, 236, 0.4);
+    }
+
+    .letter__scroll p {
+      margin: 0 0 1.05em;
+    }
+
+    .letter__scroll p:last-child {
+      margin-bottom: 0;
+    }
+
+    .letter__hint {
+      margin: clamp(16px, 2.4vh, 22px) 0 0;
+      color: rgba(210, 190, 229, 0.42);
+      font-family: var(--font-ui);
+      font-size: clamp(0.58rem, 0.7vw, 0.68rem);
+      letter-spacing: 0.2em;
+      text-align: center;
+    }
+
+    @media (max-width: 720px) {
+      .letter-btn {
+        top: 84px;
+        right: 14px;
+        height: 30px;
+        padding: 0 12px;
+      }
+
+      .letter {
+        padding: 16px;
+      }
+
+      .letter__panel {
+        max-height: 86vh;
+      }
+    }
+
+    /* ============================================================
+       7. 动画
+       ============================================================ */
+    @keyframes twinkle {
+      0% {
+        opacity: calc(var(--o) * 0.35);
+        transform: scale(0.8);
+      }
+
+      100% {
+        opacity: var(--o);
+        transform: scale(1.12);
+      }
+    }
+
+    @keyframes auroraDrift {
+      0% {
+        transform: translate3d(-2%, -1%, 0) scale(1);
+      }
+
+      100% {
+        transform: translate3d(3%, 4%, 0) scale(1.08);
+      }
+    }
+
+    @keyframes uiIn {
+      from {
+        opacity: 0;
+        transform: translateY(16px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes cardAppear {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    @keyframes cardCharge {
+      0% {
+        opacity: 0.14;
+        filter: brightness(0.86);
+      }
+
+      100% {
+        opacity: 1;
+        filter: brightness(1.12);
+      }
+    }
+
+    /* [内容] 翻开后正文淡入 */
+    @keyframes bodyIn {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes hintNudge {
+
+      0%,
+      100% {
+        transform: translateX(0);
+      }
+
+      20% {
+        transform: translateX(-5px);
+      }
+
+      40% {
+        transform: translateX(4px);
+      }
+
+      60% {
+        transform: translateX(-3px);
+      }
+
+      80% {
+        transform: translateX(2px);
+      }
+    }
+
+    @keyframes impatientRing {
+
+      0%,
+      100% {
+        opacity: 0.92;
+      }
+
+      34% {
+        opacity: 0.45;
+      }
+
+      68% {
+        opacity: 0.92;
+      }
+    }
+
+    /* ============================================================
+       8. 响应式与可访问性
+       ============================================================ */
+    @media (max-width: 720px) {
+
+      /* [阶段三] 窄屏收紧摄像头小窗，避免和标题抢位置 */
+      .hand-panel {
+        top: 60px;
+        left: 12px;
+        width: 132px;
+        padding: 7px;
+      }
+
+      .hand-panel__hint {
+        display: none;
+      }
+
+      .topbar {
+        gap: 14px;
+        padding-top: max(18px, env(safe-area-inset-top));
+      }
+
+      .brand__text span {
+        display: none;
+      }
+
+      .brand__text strong {
+        font-size: 0.72rem;
+        letter-spacing: 0.27em;
+      }
+
+      .progress {
+        gap: 8px;
+        padding: 5px 11px 5px 6px;
+      }
+
+      .progress__copy>span {
+        display: none;
+      }
+
+      .hero {
+        padding-top: clamp(28px, 5.6vh, 48px);
+      }
+
+      .hero__sub {
+        max-width: 310px;
+        letter-spacing: 0.11em;
+      }
+
+      .hero__hint {
+        max-width: 330px;
+        margin-right: auto;
+        margin-left: auto;
+        line-height: 1.7;
+      }
+
+      .footbar__rite {
+        display: none;
+      }
+
+      .footbar__hints {
+        gap: 10px;
+        letter-spacing: 0.14em;
+      }
+
+      .completion__actions {
+        flex-direction: column-reverse;
+      }
+
+      .btn {
+        width: 100%;
+      }
+    }
+
+    @media (max-height: 680px) and (min-width: 721px) {
+      .hero {
+        padding-top: 22px;
+      }
+
+      .hero__sub {
+        margin-top: 10px;
+      }
+
+      .hero__hint {
+        margin-top: 10px;
+      }
+
+      /* 矮屏压缩引导线，给竖版长牌留出呼吸空间 */
+      .hero::after {
+        height: 22px;
+        margin-top: 12px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- 背景：星云、星尘与细颗粒 -->
+  <div class="ambient" aria-hidden="true">
+    <div class="aurora aurora--one"></div>
+    <div class="aurora aurora--two"></div>
+    <div class="aurora aurora--three"></div>
+    <div class="ambient__veil"></div>
+    <div class="starfield" id="starfield"></div>
+    <div class="ambient__grain"></div>
+  </div>
+
+  <div class="page-frame" aria-hidden="true"></div>
+
+  <!-- ============================================================
+       [阶段三] 手势控制面板：左上角摄像头预览 + 模式切换
+       ============================================================ -->
+  <aside class="hand-panel is-loading" id="handPanel" aria-label="手势控制面板">
+    <div class="hand-panel__bar">
+      <span class="hand-panel__status" id="handStatus">加载中</span>
+      <div class="hand-panel__switch" role="group" aria-label="控制模式切换">
+        <button class="hand-panel__btn is-active" type="button" id="modeGestureBtn" aria-pressed="true">手势</button>
+        <button class="hand-panel__btn" type="button" id="modeMouseBtn" aria-pressed="false">鼠标</button>
+      </div>
+    </div>
+
+    <div class="hand-panel__stage" id="handStage">
+      <video class="hand-panel__video" id="handVideo" playsinline muted autoplay></video>
+      <canvas class="hand-panel__canvas" id="handCanvas" width="240" height="180"></canvas>
+      <div class="hand-panel__loading" id="handLoading" aria-hidden="true">
+        <span class="hand-panel__spinner"></span>
+        <span id="handLoadingText">正在连接摄像头…</span>
+      </div>
+      <span class="hand-panel__gesture" id="handGesture" aria-live="polite">未识别</span>
+    </div>
+
+    <p class="hand-panel__hint" id="handHint">掌心转牌阵 · 握拳抽取 · 张开手掌收牌</p>
+  </aside>
+
+  <main class="app">
+    <header class="topbar">
+      <div class="brand" aria-label="Nocturne Birthday Arcana">
+        <span class="brand__sigil" aria-hidden="true">✦</span>
+        <span class="brand__text">
+          <strong>TO YOU</strong>
+          <span>HAPPY BIRTHDAY</span>
+        </span>
+      </div>
+
+      <div class="progress" id="progress" aria-label="已抽取 0 / 13">
+        <span class="progress__orb" aria-hidden="true">
+          <span class="progress__ring" id="progressRing"></span>
+          <span class="progress__star">✦</span>
+        </span>
+        <span class="progress__copy">
+          <span>进度</span>
+          <strong class="progress__count">已抽取 <b id="drawnCount">0</b> / <b id="totalCount">13</b></strong>
+        </span>
+      </div>
+    </header>
+
+    <!-- “查看信”：默认隐藏，完成弹窗首次出现后解锁；只在浏览态可见 -->
+    <button class="letter-btn" id="letterBtn" type="button" aria-hidden="true" tabindex="-1">
+      <span aria-hidden="true">✦</span>
+      <span>查看信</span>
+    </button>
+
+    <section class="hero" aria-labelledby="heroTitle">
+      <p class="eyebrow">A Birthday Tarot </p>
+      <h1 id="heroTitle">亲爱的xx，<em>生日快乐</em></h1>
+      <p class="hero__sub">回忆一下过去一年发生的事情吧~</p>
+      <p class="hero__hint" id="heroHint">
+        <span class="hint-star" aria-hidden="true">✦</span>
+        <span id="heroHintText">掌心左右移动转动牌阵，停在弧顶静候 0.5 秒</span>
+      </p>
+    </section>
+
+    <!-- 牌阵层：卡牌由 JS 根据配置生成并沿弧线定位 -->
+    <section class="card-stage" id="cardStage" aria-label="十三张生日塔罗牌阵">
+      <div class="arc-halo" aria-hidden="true"></div>
+      <div class="celestial-seal" aria-hidden="true">
+        <span class="celestial-seal__cross celestial-seal__cross--h"></span>
+        <span class="celestial-seal__cross celestial-seal__cross--v"></span>
+        <span class="celestial-seal__core">✦</span>
+      </div>
+      <div class="arc-orbit arc-orbit--outer" id="arcOrbitOuter" aria-hidden="true"></div>
+      <div class="arc-orbit arc-orbit--inner" id="arcOrbitInner" aria-hidden="true"></div>
+      <div class="cards" id="cardsRoot">
+        <!-- 圆盘：只有它逐帧旋转，16 张牌固定在盘上 -->
+        <div class="ring" id="ringRoot"></div>
+      </div>
+    </section>
+
+    <footer class="footbar" aria-hidden="true">
+      <div class="footbar__hints">
+        <span><b>MOVE</b> 转动牌阵</span>
+        <span class="footbar__dot"></span>
+        <span><b>CLICK</b> 翻开礼物</span>
+      </div>
+      <div class="footbar__rite">A BIRTHDAY GIFT</div>
+    </footer>
+  </main>
+
+  <!-- [阶段二] 跟随鼠标的紫色光点；页面内隐藏系统光标，移出 / 失焦时恢复 -->
+  <div class="pointer-glow" id="pointerGlow" aria-hidden="true"></div>
+
+  <!-- 抽取展示时的暗场 + 固定 12px 毛玻璃覆盖层 -->
+  <div class="veil" id="veil" aria-hidden="true"></div>
+
+  <div class="reveal-hint" id="revealHint" aria-hidden="true">
+    <b id="revealHintText">静候星辉落定</b>
+    <span id="revealHintSub">片刻之后，轻点空白处收起</span>
+  </div>
+
+  <!-- 完成弹窗 -->
+  <div class="completion" id="completion" aria-hidden="true">
+    <div class="completion__panel" role="dialog" aria-modal="true" aria-labelledby="completionTitle"
+      aria-describedby="completionDesc">
+      <span class="completion__corner completion__corner--tl" aria-hidden="true"></span>
+      <span class="completion__corner completion__corner--br" aria-hidden="true"></span>
+      <span class="completion__crest" aria-hidden="true">✦</span>
+      <p class="completion__eyebrow">THE FINAL ARCANA</p>
+      <h2 id="completionTitle">星牌已尽数翻开</h2>
+      <div class="completion__divider" aria-hidden="true">
+        <span></span><i>✦</i><span></span>
+      </div>
+      <p class="completion__desc" id="completionDesc">全部卡牌已揭晓 —— 是否开启下一章？</p>
+      <p class="completion__small">看看给你写了什么东西吧~</p>
+      <div class="completion__actions">
+        <a class="btn btn--primary" id="nextChapterLink" href="#">开启下一章</a>
+        <button class="btn btn--ghost" id="completionClose" type="button">再回味一下</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       信弹窗：紫色调与完成弹窗一致；不设关闭按钮，点弹窗外空白处关闭。
+       正文是占位内容，之后替换即可（直接在下面 <p> 里改）。
+       ============================================================ -->
+  <div class="letter" id="letter" role="dialog" aria-modal="true" aria-labelledby="letterTitle" aria-hidden="true">
+    <div class="letter__panel" id="letterPanel" tabindex="-1">
+      <span class="completion__corner completion__corner--tl" aria-hidden="true"></span>
+      <span class="completion__corner completion__corner--br" aria-hidden="true"></span>
+      <p class="completion__eyebrow">THE NEXT CHAPTER</p>
+      <h2 class="letter__title" id="letterTitle">生日快乐</h2>
+      <div class="completion__divider" aria-hidden="true">
+        <span></span><i>✦</i><span></span>
+      </div>
+      <div class="letter__scroll" id="letterScroll" tabindex="0">
+        <!-- TODO: 占位正文，之后整段替换成真正的信 -->
+        <p>to 亲爱的xx</p>
+        <p>填充信件内容</p>
+      </div>
+      <p class="letter__hint">轻点弹窗外的空白处收起</p>
+    </div>
+  </div>
+
+  <div class="sr-only" id="liveRegion" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    'use strict';
+
+    /* ============================================================
+       1. 全局可调参数
+       ------------------------------------------------------------
+       交互、动画、弧线、卡牌比例等参数都集中在这里。
+       修改后刷新页面即可生效。
+       ============================================================ */
+    const CONFIG={
+      // --- 牌面比例 ---
+      cardAspectW: 7,                  // 牌面宽
+      cardAspectH: 12,                 // 牌面高（严格 7:12，竖版塔罗比例）
+
+      // --- [阶段一] 环形无限转盘：以下参数集中控制牌阵形态 ---
+      totalCards: 16,                  // 牌阵总张数：16 张沿圆周均匀铺满一整圈，首尾天然相连
+      angleStep: 22.5,                 // 相邻两张牌的圆心角（度）。360 / 16 = 22.5，保证环形无缝、无空隙
+      radius: 0.50,                    // 转盘半径 = 视口宽度 × 0.50。圆心落在屏幕下方，值越小弧线越弯
+      visibleArc: 140,                 // 同一时刻可见的弧线范围（度），即正前方左右各 70°；超出的牌淡出隐藏
+      arcApexY: 0.62,                  // 正前方那张牌的中心高度 = 视口高度 × 0.62，决定整条弧线的高低
+
+      // --- 选中 / 充能 ---
+      focusLiftPx: 26,                 // 吸附选中后向上浮起的像素
+      focusScale: 1.045,               // 吸附选中后的轻微放大
+      focusTransitionMs: 300,          // 浮起、放大过渡时长
+      chargeDurationMs: 300,           // 吸附后充能多久进入“可抽取态”（0.3s）
+      chargeEase: 'cubic-bezier(0.42, 0, 0.9, 0.45)', // 前慢后快的 ease-in
+
+      // --- 抽取 / 翻转 / 关闭 ---
+      flightDurationMs: 500,           // 从牌阵飞到屏幕中心、完成放大的时长
+      flipStartDelayMs: 350,           // 起飞后多久开始翻面（略早于飞抵中心，保证连贯）
+      flipDurationMs: 250,             // 3D 翻转时长（0.3~0.4s）
+      returnDurationMs: 660,           // 关闭时落回原位的时长
+      revealCooldownMs: 800,          // 展示后多久允许点击空白关闭
+      veilFadeMs: 1000,                // 背景暗化 + 毛玻璃渐入/渐出
+      veilBlurPx: 12,                  // 固定 blur 值（不参与过渡）
+
+      // --- 卡牌尺寸（环形排列共用，宽高比严格由 cardAspectW : cardAspectH 决定） ---
+      cardWidthVw: 0.08,               // 单牌宽度 = 视口宽度 × 0.08
+      minCardWidthPx: 40,              // 窄屏下的最小牌宽
+      maxCardWidthPx: 200,             // 超大屏下的最大牌宽
+
+      // --- [阶段二] 光点驱动的连续速度模型（取代旧的“三区分区”手感） ---
+      pointerMaxSpeed: 150,            // 光点贴到屏幕最左 / 最右时的最大转速（度/秒）
+      pointerCurve: 'squared',         // 速度曲线形状：'linear' 线性 / 'squared' 平方（中段更柔和、边缘更快）
+      pointerDeadZone: 0.03,           // 中心死区：归一化偏移 |x-0.5| 小于该值时转速归零，避免中心缓慢漂移
+      pointerDampingPerSec: 3.2,       // 鼠标移出后的阻尼衰减系数（每秒），越大停得越快
+      pointerDirection: 1,             // 方向一键反转：1 正常（右→顺时针）/ -1 反向
+
+      // --- [阶段二] 减速吸附 + 选中 ---
+      snapSpeedThreshold: 18,          // 转速绝对值低于该值（度/秒）才允许吸附；超过则解除吸附
+      snapAngleToleranceDeg: 12,       // 最近牌与弧顶的角度偏差小于该值（度）才吸附，避免还没停稳就吸
+      snapEaseMs: 260,                 // 吸附时 rotation 缓动到弧顶的时长（毫秒）
+
+      // --- 抽取后最终展示尺寸（竖牌需同时受宽高约束） ---
+      revealWidthVw: 0.68,             // 最大不超过视口宽的 68%
+      revealHeightVh: 0.72,            // 最大不超过视口高的 72%
+      revealMaxWidthPx: 430,           // 最终展示的最大宽度
+
+      // --- 完成弹窗 ---
+      completionDelayMs: 900           // 最后一张揭示后，延迟多弹出完成框
+    };
+
+    /* ============================================================
+       1.1 [阶段三] 手势 / 摄像头参数
+       ------------------------------------------------------------
+       手势只负责“光点从哪里来”，转盘速度、吸附、选中、充能
+       全部复用 CONFIG 里的阶段二逻辑，不另开一套。
+       调参顺序：先 fistRatio / openRatio（能不能稳定识别），
+       再 fistCooldownMs / palmOpenCooldownMs（会不会误触发）。
+       ============================================================ */
+    const CONFIG_GESTURE={
+      // --- 摄像头 / 模型 ---
+      cameraWidth: 320,                // 摄像头请求宽度（模型内部本来就会缩到 256，640 只会白吃主线程）
+      cameraHeight: 240,               // 摄像头请求高度（4:3，与预览窗比例一致）
+      cameraFrameRate: 30,             // 摄像头采集帧率上限
+      modelFps: 15,                    // 每秒最多送几帧给模型。每帧 send() 会占用主线程十几~几十毫秒，
+      // 送得越密转盘越容易掉帧；20fps 配合下面的转速低通已经足够顺
+      modelComplexity: 0,              // MediaPipe 模型复杂度：0 轻量更流畅 / 1 更精细但更慢
+      minDetectionConfidence: 0.6,     // 手部检测置信度阈值
+      minTrackingConfidence: 0.6,      // 手部跟踪置信度阈值
+      confidenceThreshold: 0.7,        // 有效手门槛：multiHandedness 分数低于该值的帧直接忽略
+      maxNumHands: 1,                  // 同时识别的手数量（固定 1 只，避免双手抢夺光点）
+      initTimeoutMs: 15000,            // 摄像头 / 模型初始化超时，超时自动回退鼠标模式
+
+      // --- 掌心 → 光点 ---
+      smoothTimeMs: 120,               // 掌心 x 的平滑时间常数（毫秒），按真实时间做 EMA：
+      // 识别帧率忽高忽低时手感一致，不会“帧多就滑、帧少就顿”
+      speedSmoothMs: 90,               // 转速低通时间常数（毫秒）：手势结果只有 ~20fps，
+      // 直接把转速赋成目标值会一跳一跳，这里把它插值成连续转速
+      lostHandGraceMs: 320,            // 连续多久看不到有效手才算“手离开”，避免跟踪抖动
+
+      // --- [阶段三·分区滚动] 只作用于手势，鼠标仍走 CONFIG.pointerCurve 的连续曲线 ---
+      handZoneMiddleWidth: 0.40,       // 中间“停”区宽度：0.5 ± 0.20，即 0.30~0.70 为停区
+      handZoneSpeed: 100,              // 左右区的固定转速（度/秒）；比鼠标的 150 稍慢，牌更好读
+      handZoneHysteresis: 0.05,        // 区边界迟滞：出区要比进区多走 0.04 才切换，防止手在边界抖动横跳
+      handZoneDwellMs: 100,            // 换区后至少停留这么久才允许再换区，滤掉单帧抖动
+      handSnapDelayMs: 180,            // 进入停区后先等这么久再吸附，避免快速穿过中间时被“抓住”顿一下
+
+      // --- 手势判定（先调比例，再调冷却） ---
+      fistRatio: 0.35,                 // 进入握拳：四指“指尖→指根 / 掌长”全部小于该比例
+      fistExitRatio: 0.45,             // 退出握拳：任一指标超过该值才算松开（迟滞，防边沿抖动）
+      openRatio: 0.60,                 // 进入张开：食指 / 中指 / 无名指三指全部大于该比例
+      openExitRatio: 0.52,             // 退出张开：任一指标低于该值才算收回（迟滞）
+      gestureMemoryMs: 600,            // 状态记忆：这么久内“见过相反状态”这次动作仍然有效，
+      // 识别偶尔丢 1~2 帧、手没完全摊平，也不会白做一次
+
+      // --- 触发冷却（再调冷却，防止一次动作触发多次） ---
+      fistCooldownMs: 1000,            // 握拳抽取后的冷却
+      palmOpenCooldownMs: 1000         // 张开手掌收牌后的冷却
+    };
+
+    /* ============================================================
+       2. 资源路径与卡牌数据
+       ------------------------------------------------------------
+       所有图片路径集中在这里，后续批量替换只需改 ASSET_PATHS。
+       primary 路径按需求写作 "birthweb/img/..."；fallback 用于
+       直接在 code/index.html 打开时兼容同级 ../img/ 目录。
+       ============================================================ */
+    const ASSET_PATHS={
+      back: 'birthweb/img/back.png',
+      fallbackBack: '../img/back.png'
+    };
+
+    // [内容] 16 张卡牌：图片 / 大标题 / 正文，顺序与 img/list.txt 一致
+    const CARDS=[
+      {id: 1,photo: 'birthweb/img/001.jpg',photoFallback: '../img/001.jpg',title: '2025.12.8',body: '填充文字'},
+      {id: 2,photo: 'birthweb/img/013.jpg',photoFallback: '../img/013.jpg',title: '这是一个礼物！',body: '填充文字'},
+      {id: 3,photo: 'birthweb/img/002.jpg',photoFallback: '../img/002.jpg',title: '2026.1.11',body: '填充文字'},
+      {id: 4,photo: 'birthweb/img/003.jpg',photoFallback: '../img/003.jpg',title: '2026.1.14',body: '填充文字'},
+      {id: 5,photo: 'birthweb/img/004.jpg',photoFallback: '../img/004.jpg',title: '2026.3.18',body: '填充文字'},
+      {id: 6,photo: 'birthweb/img/005.jpg',photoFallback: '../img/005.jpg',title: '2026.3.30',body: '填充文字'},
+      {id: 7,photo: 'birthweb/img/013.jpg',photoFallback: '../img/013.jpg',title: '这是一个礼物！',body: '填充文字'},
+      {id: 8,photo: 'birthweb/img/006.jpg',photoFallback: '../img/006.jpg',title: '2026.4.24',body: '填充文字'},
+      {id: 9,photo: 'birthweb/img/007.jpg',photoFallback: '../img/007.jpg',title: '2026.5.20',body: '填充文字'},
+      {id: 10,photo: 'birthweb/img/013.jpg',photoFallback: '../img/013.jpg',title: '这是一个礼物！',body: '填充文字'},
+      {id: 11,photo: 'birthweb/img/008.jpg',photoFallback: '../img/008.jpg',title: '2026.5.20',body: '填充文字'},
+      {id: 12,photo: 'birthweb/img/009.jpg',photoFallback: '../img/009.jpg',title: '2026.6.20',body: '填充文字'},
+      {id: 13,photo: 'birthweb/img/010.jpg',photoFallback: '../img/010.jpg',title: '2026.7.6',body: '填充文字'},
+      {id: 14,photo: 'birthweb/img/011.jpg',photoFallback: '../img/011.jpg',title: '2026.8.21',body: '填充文字'},
+      {id: 15,photo: 'birthweb/img/012.jpg',photoFallback: '../img/012.jpg',title: '2026.10.31',body: '填充文字'},
+      {id: 16,photo: 'birthweb/img/013.jpg',photoFallback: '../img/013.jpg',title: '这是一个礼物！',body: '填充文字'}
+    ];
+
+    if(CARDS.length!==CONFIG.totalCards) {
+      console.warn('[Birthday Tarot] CONFIG.totalCards 与 CARDS 数量不一致，已以 CARDS 数组长度为准。');
+    }
+
+    // [阶段一] 环形无缝的前提：angleStep × 牌数 必须正好等于 360°
+    if(Math.abs(CONFIG.angleStep*CONFIG.totalCards-360)>0.001) {
+      console.warn('[Birthday Tarot] angleStep × totalCards 应等于 360°，否则环形首尾会出现缝隙或叠压。');
+    }
+
+    /* ============================================================
+       3. DOM 引用与运行时状态
+       ============================================================ */
+    const dom={
+      starfield: document.getElementById('starfield'),
+      cardsRoot: document.getElementById('cardsRoot'),
+      ringRoot: document.getElementById('ringRoot'),
+      cardStage: document.getElementById('cardStage'),
+      arcOrbitOuter: document.getElementById('arcOrbitOuter'),
+      arcOrbitInner: document.getElementById('arcOrbitInner'),
+      progress: document.getElementById('progress'),
+      progressRing: document.getElementById('progressRing'),
+      drawnCount: document.getElementById('drawnCount'),
+      totalCount: document.getElementById('totalCount'),
+      heroHint: document.getElementById('heroHint'),
+      heroHintText: document.getElementById('heroHintText'),
+      veil: document.getElementById('veil'),
+      revealHint: document.getElementById('revealHint'),
+      revealHintText: document.getElementById('revealHintText'),
+      revealHintSub: document.getElementById('revealHintSub'),
+      completion: document.getElementById('completion'),
+      completionClose: document.getElementById('completionClose'),
+      nextChapterLink: document.getElementById('nextChapterLink'),
+      letter: document.getElementById('letter'),
+      letterPanel: document.getElementById('letterPanel'),
+      letterScroll: document.getElementById('letterScroll'),
+      letterBtn: document.getElementById('letterBtn'),
+      pointerGlow: document.getElementById('pointerGlow'),
+      // [阶段三] 摄像头小窗与模式切换
+      handPanel: document.getElementById('handPanel'),
+      handStage: document.getElementById('handStage'),
+      handVideo: document.getElementById('handVideo'),
+      handCanvas: document.getElementById('handCanvas'),
+      handLoadingText: document.getElementById('handLoadingText'),
+      handHint: document.getElementById('handHint'),
+      handStatus: document.getElementById('handStatus'),
+      handGesture: document.getElementById('handGesture'),
+      modeGestureBtn: document.getElementById('modeGestureBtn'),
+      modeMouseBtn: document.getElementById('modeMouseBtn'),
+      liveRegion: document.getElementById('liveRegion')
+    };
+
+    const TOTAL=CARDS.length;
+
+    let focusedIndex=null;       // 吸附选中的牌（由转盘吸附决定，不由鼠标悬停决定）
+    let readyIndex=null;         // 充能满 0.5s 的牌
+    let phase='browsing';        // 状态机：browsing | revealed
+    let isBusy=false;            // 正在飞牌 / 归位时为 true，防止重复触发
+    let currentIndex=null;       // 当前正在展示的牌
+    let chargeTimer=0;
+    let cooldownUntil=0;
+    let hintTimer=0;
+    let completionTimer=0;
+    let completionOpen=false;
+    let completionCelebrated=false;
+    let letterOpen=false;        // 信弹窗是否打开
+    let letterUnlocked=false;    // “查看信”按钮是否已解锁（完成弹窗首次出现时置位，刷新清零）
+    let layoutFrame=0;
+
+    // [阶段二] 每次加载都从“全部未抽”开始，不再读写 localStorage
+    const drawnIds=new Set();
+    const cardItems=[];
+
+    // 浏览态默认提示语（吸附 / 松开时复用，保证文案一致）
+    const BROWSE_HINT='左右移动鼠标转动牌阵，停在弧顶静候 0.5 秒。';
+    const BROWSE_HINT_GESTURE='掌心左右移动转动牌阵，停在弧顶静候 0.5 秒。';
+
+    // [阶段三] 提示语跟随当前输入源
+    function browseHint () {
+      return controlMode==='gesture'? BROWSE_HINT_GESTURE:BROWSE_HINT;
+    }
+
+    if(dom.totalCount) dom.totalCount.textContent=String(TOTAL);
+
+    /* ============================================================
+       4. 工具函数
+       ============================================================ */
+    function clamp (value,min,max) {
+      return Math.min(Math.max(value,min),max);
+    }
+
+    function padTwo (value) {
+      return String(value).padStart(2,'0');
+    }
+
+    // 固定种子随机数：每次刷新星点位置保持一致
+    function mulberry32 (seed) {
+      let a=seed>>>0;
+      return function random () {
+        a+=0x6D2B79F5;
+        let t=a;
+        t=Math.imul(t^(t>>>15),t|1);
+        t^=t+Math.imul(t^(t>>>7),t|61);
+        return ((t^(t>>>14))>>>0)/4294967296;
+      };
+    }
+
+    function setLiveMessage (message) {
+      dom.liveRegion.textContent='';
+      window.setTimeout(() => {
+        dom.liveRegion.textContent=message;
+      },30);
+    }
+
+    function setHeroHint (text,nudge=false) {
+      if(dom.heroHintText.textContent===text&&!nudge) return;
+      dom.heroHintText.textContent=text;
+      if(nudge) {
+        dom.heroHint.classList.remove('is-nudged');
+        // 强制重排，让动画可以重复触发
+        void dom.heroHint.offsetWidth;
+        dom.heroHint.classList.add('is-nudged');
+        window.setTimeout(() => dom.heroHint.classList.remove('is-nudged'),520);
+      }
+    }
+
+    function setRevealHint (main,sub,visible) {
+      dom.revealHintText.textContent=main;
+      dom.revealHintSub.textContent=sub;
+      dom.revealHint.classList.toggle('is-visible',Boolean(visible));
+    }
+
+    function setVeilVisible (visible) {
+      if(visible) {
+        // 强制浏览器先读到 opacity:0，再开启过渡
+        void dom.veil.offsetWidth;
+      }
+      dom.veil.classList.toggle('is-visible',Boolean(visible));
+    }
+
+    function applyCssConfig () {
+      const rootStyle=document.documentElement.style;
+
+      rootStyle.setProperty('--card-aspect',`${CONFIG.cardAspectW} / ${CONFIG.cardAspectH}`);
+      rootStyle.setProperty('--focus-lift',`${CONFIG.focusLiftPx}px`);
+      rootStyle.setProperty('--focus-scale',String(CONFIG.focusScale));
+      rootStyle.setProperty('--focus-transition',`${CONFIG.focusTransitionMs}ms`);
+      rootStyle.setProperty('--charge-duration',`${CONFIG.chargeDurationMs}ms`);
+      rootStyle.setProperty('--charge-ease',CONFIG.chargeEase);
+      rootStyle.setProperty('--veil-fade',`${CONFIG.veilFadeMs}ms`);
+      rootStyle.setProperty('--veil-blur',`${CONFIG.veilBlurPx}px`);
+    }
+
+    /* ============================================================
+       5. 星尘背景
+       ============================================================ */
+    function buildStarfield () {
+      const fragment=document.createDocumentFragment();
+      const random=mulberry32(20261106);
+      const count=window.innerWidth<700? 54:86;
+
+      for(let i=0;i<count;i+=1) {
+        const star=document.createElement('span');
+        const spark=random()>0.9;
+        const size=spark? 8+random()*10:0.8+random()*2.1;
+
+        star.className=spark? 'star star--spark':'star';
+        star.style.setProperty('--x',`${(random()*100).toFixed(2)}%`);
+        star.style.setProperty('--y',`${(random()*78).toFixed(2)}%`);
+        star.style.setProperty('--s',`${size.toFixed(2)}px`);
+        star.style.setProperty('--o',(0.16+random()*0.58).toFixed(2));
+        star.style.setProperty('--t',`${(3.2+random()*6.8).toFixed(2)}s`);
+        star.style.setProperty('--d',`${(-random()*8).toFixed(2)}s`);
+        fragment.appendChild(star);
+      }
+
+      dom.starfield.appendChild(fragment);
+    }
+
+    /* ============================================================
+       6. 卡牌创建
+       ============================================================ */
+    function bindImage (img,primarySrc,fallbackSrc) {
+      let usedFallback=false;
+
+      img.addEventListener('error',() => {
+        if(!usedFallback&&fallbackSrc&&fallbackSrc!==primarySrc) {
+          usedFallback=true;
+          img.src=fallbackSrc;
+          return;
+        }
+        img.style.opacity='0';
+      });
+
+      img.src=primarySrc;
+    }
+
+    function createCardElement (data,index) {
+      const el=document.createElement('button');
+      el.type='button';
+      el.className='card card--entering';
+      el.dataset.index=String(index);
+      el.style.setProperty('--i',String(index));
+      el.style.setProperty('--order',String(index+1));
+      el.setAttribute('aria-label',
+        data.title? `第 ${index+1} 张生日塔罗牌：${data.title}`:`第 ${index+1} 张生日塔罗牌`);
+
+      el.innerHTML=`
+        <span class="card__float">
+          <span class="card__glow" aria-hidden="true"></span>
+          <span class="card__ring" aria-hidden="true"></span>
+          <span class="card__inner">
+            <span class="card__face card__face--back">
+              <img class="card__back-img" alt="" draggable="false">
+              <span class="card__back-veil" aria-hidden="true"></span>
+              <span class="card__frame" aria-hidden="true"></span>
+              <span class="card__drawn-mark" aria-hidden="true"></span>
+            </span>
+            <span class="card__face card__face--front">
+              <span class="card__front-inner">
+                <span class="card__photo">
+                  <img alt="" draggable="false">
+                </span>
+                <span class="card__caption">
+                  <span class="card__caption-head">
+                    <span class="card__caption-star" aria-hidden="true">✦</span>
+                    <span class="card__text"></span>
+                  </span>
+                  <span class="card__body" aria-hidden="true"></span>
+                </span>
+              </span>
+            </span>
+          </span>
+        </span>
+      `;
+
+      const backImg=el.querySelector('.card__back-img');
+      const frontImg=el.querySelector('.card__photo img');
+      const textNode=el.querySelector('.card__text');
+      const bodyNode=el.querySelector('.card__body');
+
+      bindImage(backImg,ASSET_PATHS.back,ASSET_PATHS.fallbackBack);
+      bindImage(frontImg,data.photo,data.photoFallback);
+      textNode.textContent=data.title;
+      bodyNode.textContent=data.body;
+
+      const item={
+        ...data,
+        index,
+        el,
+        floatEl: el.querySelector('.card__float'),
+        backImg,
+        frontImg,
+        textNode,
+        baseWidth: 0,
+        baseHeight: 0,
+        animation: null,
+        innerAnimation: null
+      };
+
+      // [阶段二] 卡牌上不再绑定悬停 / 聚焦选中：
+      // 选中完全由“转盘吸附到弧顶”决定，点击只作为抽取确认，统一交给 document 的事件处理。
+      // 这里保留阻止冒泡，避免点击卡牌时触发“点空白收牌”的分支。
+      el.addEventListener('click',(event) => {
+        event.stopPropagation();
+        if(phase==='browsing'&&!isBusy) {
+          inputLayer.triggerDraw();
+        }
+      });
+
+      // 入场动画只播放一次；移除 class 后，DOM 移动不会让它重启
+      el.addEventListener('animationend',(event) => {
+        if(event.animationName==='cardAppear') {
+          el.classList.remove('card--entering');
+        }
+      });
+
+      if(drawnIds.has(data.id)) {
+        markCardAsDrawn(item);
+      }
+
+      return item;
+    }
+
+    function markCardAsDrawn (item) {
+      item.el.classList.add('is-drawn');
+      item.el.setAttribute(
+        'aria-label',
+        `第 ${item.index+1} 张生日塔罗牌「${item.title}」，已揭晓，点击重温`
+      );
+    }
+
+    function createAllCards () {
+      const fragment=document.createDocumentFragment();
+
+      CARDS.forEach((data,index) => {
+        const item=createCardElement(data,index);
+        cardItems.push(item);
+        fragment.appendChild(item.el);
+      });
+
+      dom.ringRoot.appendChild(fragment);
+    }
+
+    /* ============================================================
+       7. 环形无限转盘布局（转盘结构）
+       ------------------------------------------------------------
+       圆心落在屏幕下方：centerY = arcApexY × 视口高 + radius。
+       16 张牌只在 layoutRing() 里按 index × angleStep 钉到圆盘上一次，
+       之后每帧只改 .ring 的一个 rotate()，不再逐张写样式。
+       第 index 张牌的实际角度仍然是 rotation + index × angleStep（对 2π 取模），
+       和逐张计算完全等价——只是把“加法”交给了圆盘的旋转。
+
+       可见性：卡牌层叠一层“以弧顶为圆心”的径向渐隐遮罩，
+       越远离弧顶越透明；屏幕外的部分由视口自然裁切。
+       ============================================================ */
+    const DEG=Math.PI/180;            // 角度 → 弧度
+    const TAU=Math.PI*2;              // 一整圈（2π）
+
+    // 转盘当前转角（度）。可无限累加，只在写 transform 时对 360 取模
+    let ringRotation=0;
+
+    // 当前布局（半径 / 圆心 / 牌尺寸），窗口大小变化时重算
+    let ringLayout=null;
+
+    // 把弧度归一化到 (-π, π]：既完成“对 2π 取模”，又直接得到相对正前方的夹角
+    function wrapRadians (rad) {
+      const wrapped=((rad%TAU)+TAU)%TAU;
+      return wrapped>Math.PI? wrapped-TAU:wrapped;
+    }
+
+    function calculateRingLayout () {
+      const vw=window.innerWidth;
+      const vh=window.innerHeight;
+
+      // 半径跟随视口宽度：弧线横向铺满屏幕；窄屏时圆心会贴近屏幕底边
+      const radius=vw*CONFIG.radius;
+      const centerX=vw/2;
+      const centerY=vh*CONFIG.arcApexY+radius;
+
+      const baseCardWidth=clamp(
+        vw*CONFIG.cardWidthVw,
+        CONFIG.minCardWidthPx,
+        CONFIG.maxCardWidthPx
+      );
+      const baseCardHeight=baseCardWidth*(CONFIG.cardAspectH/CONFIG.cardAspectW);
+
+      const angleStepRad=CONFIG.angleStep*DEG;
+      const halfVisibleRad=Math.max(1,CONFIG.visibleArc/2)*DEG;
+      // 可见弧的最后 28% 用来做渐隐，牌不会在屏幕边缘硬切
+      const fadeStartRad=halfVisibleRad*0.72;
+
+      return {
+        vw,
+        vh,
+        radius,
+        centerX,
+        centerY,
+        baseCardWidth,
+        baseCardHeight,
+        angleStepRad,
+        halfVisibleRad,
+        fadeStartRad
+      };
+    }
+
+    // 只在初始化 / 窗口大小变化时调用：把牌钉到圆盘上
+    function layoutRing () {
+      const layout=calculateRingLayout();
+      ringLayout=layout;
+
+      dom.ringRoot.style.left=`${layout.centerX}px`;
+      dom.ringRoot.style.top=`${layout.centerY}px`;
+
+      cardItems.forEach((item,index) => {
+        // 盘上固定位置：角度 = index × angleStep，牌面朝向圆心
+        const theta=index*layout.angleStepRad;
+        const x=layout.radius*Math.sin(theta);
+        const y=-layout.radius*Math.cos(theta);
+
+        item.baseWidth=layout.baseCardWidth;
+        item.baseHeight=layout.baseCardHeight;
+
+        item.el.style.setProperty('--rx',`${x.toFixed(2)}px`);
+        item.el.style.setProperty('--ry',`${y.toFixed(2)}px`);
+        item.el.style.setProperty('--ra',`${(theta/DEG).toFixed(4)}deg`);
+
+        // 正在飞牌 / 展示 / 归位的卡牌尺寸由动画控制，不要覆盖
+        const isAnimatingCard=item.el.classList.contains('card--flying')||
+          item.el.classList.contains('card--displayed')||
+          item.el.classList.contains('card--returning');
+
+        if(isAnimatingCard) return;
+
+        item.el.style.width=`${layout.baseCardWidth}px`;
+        item.el.style.height=`${layout.baseCardHeight}px`;
+      });
+
+      // 弧形渐隐遮罩：圆心放在弧顶，内外半径由可见弧角度换算成“离弧顶的距离”
+      const innerDist=2*layout.radius*Math.sin(layout.fadeStartRad/2);
+      const outerDist=2*layout.radius*Math.sin(layout.halfVisibleRad/2);
+
+      dom.cardsRoot.style.setProperty('--mask-apex-y',`${(CONFIG.arcApexY*100).toFixed(2)}%`);
+      dom.cardsRoot.style.setProperty('--mask-inner',`${innerDist.toFixed(0)}px`);
+      dom.cardsRoot.style.setProperty('--mask-outer',`${outerDist.toFixed(0)}px`);
+
+      // 与转盘同心的细线圆环，只露出上方的弧
+      const outerDiameter=layout.radius*2;
+      const innerDiameter=Math.max(0,outerDiameter-76);
+
+      dom.arcOrbitOuter.style.width=`${outerDiameter}px`;
+      dom.arcOrbitOuter.style.height=`${outerDiameter}px`;
+      dom.arcOrbitOuter.style.left=`${layout.centerX}px`;
+      dom.arcOrbitOuter.style.top=`${layout.centerY}px`;
+
+      dom.arcOrbitInner.style.width=`${innerDiameter}px`;
+      dom.arcOrbitInner.style.height=`${innerDiameter}px`;
+      dom.arcOrbitInner.style.left=`${layout.centerX}px`;
+      dom.arcOrbitInner.style.top=`${layout.centerY}px`;
+
+      updateRingTransform();
+    }
+
+    // 每帧只做这一件事：转圆盘（16 张牌作为它的子元素一起动）
+    function updateRingTransform () {
+      dom.ringRoot.style.transform=`rotate(${(ringRotation%360).toFixed(3)}deg)`;
+    }
+
+    // 某张牌“当前”在屏幕上的位置 / 角度：抽牌、收牌动画的起点与终点
+    function getCardArc (item) {
+      const layout=ringLayout||calculateRingLayout();
+      const theta=wrapRadians((ringRotation+item.index*CONFIG.angleStep)*DEG);
+
+      return {
+        centerX: layout.centerX+layout.radius*Math.sin(theta),
+        centerY: layout.centerY-layout.radius*Math.cos(theta),
+        // 用归一化后的角度，避免累加成大角度后抽取动画要绕好几圈
+        angleDeg: theta/DEG,
+        depthScale: 1,
+        baseWidth: layout.baseCardWidth,
+        baseHeight: layout.baseCardHeight
+      };
+    }
+
+    /* ============================================================
+       7.1 [阶段二] 光点输入 + 连续速度模型 + 减速吸附
+       ------------------------------------------------------------
+       取消旧的“三区分区”手感，改成连续速度模型：
+         归一化光点横坐标 x ∈ [0,1]，offset = x - 0.5
+         转速 = sign(offset) × maxSpeed × curve(|offset|) × direction
+       过中心时 offset 变号，转速自然反向；中心死区内转速归零；
+       鼠标移出页面时甩到最大转速，再按阻尼衰减到停。
+
+       吸附：转速低于阈值、且最近牌与弧顶偏差在容差内时，
+       rotation 缓动到该牌正对弧顶，并调用 focusCard 选中 + 0.5s 充能。
+       吸附后只要转速不超过阈值，rotation 完全不动（不重算、不闪）。
+       展示态（phase !== 'browsing'）整段逻辑直接冻结。
+       ============================================================ */
+    const pointer={
+      x: window.innerWidth/2,
+      y: window.innerHeight/2,
+      normX: 0.5,       // 归一化横坐标 0~1，0.5 为正中央
+      active: false,    // 光点当前是否在页面内
+      lastDir: 1        // 最后一次偏移方向，鼠标移出时据此甩出
+    };
+
+    let ringSpeed=0;      // 当前角速度（度/秒）
+    let ringFrame=0;      // rAF 句柄
+    let ringLastTime=0;   // 上一帧时间戳（0 表示下一帧重新计时）
+    let snapAnim=null;    // 吸附缓动：{from,to,start,duration,index}
+    let snapIndex=null;   // 已吸附的牌索引；非 null 时该牌保持在弧顶
+
+    /* ---------- 光点显隐 ---------- */
+    function setPointerActive (active) {
+      if(pointer.active===active) return;
+      pointer.active=active;
+
+      dom.pointerGlow.classList.toggle('is-visible',active);
+      document.body.classList.toggle('is-pointer-active',active);
+
+      if(active) {
+        requestRingFrame();
+        return;
+      }
+
+      // 鼠标移出页面 / 窗口失焦：给最大转速，再交给阻尼衰减到停
+      if(phase==='browsing'&&!isBusy) {
+        ringSpeed=CONFIG.pointerMaxSpeed*CONFIG.pointerDirection*pointer.lastDir;
+        requestRingFrame();
+      }
+    }
+
+    // [阶段三] 光点位置的唯一入口：鼠标和掌心都调这里，
+    // 之后的转速 / 吸附 / 选中 / 充能全部沿用阶段二那一套，不再分叉。
+    function applyPointerPosition (x,y) {
+      pointer.x=x;
+      pointer.y=y;
+      pointer.normX=clamp(x/Math.max(1,window.innerWidth),0,1);
+
+      dom.pointerGlow.style.transform=
+        `translate3d(${pointer.x}px, ${pointer.y}px, 0)`;
+
+      const offset=pointer.normX-0.5;
+      if(Math.abs(offset)>CONFIG.pointerDeadZone) {
+        pointer.lastDir=offset<0? -1:1;
+      }
+
+      // 展示态不驱动转盘，光点照常跟随
+      if(phase==='browsing'&&!isBusy) requestRingFrame();
+    }
+
+    function movePointer (event) {
+      if(controlMode!=='mouse') return;   // [阶段三] 手势模式由掌心驱动光点
+
+      applyPointerPosition(event.clientX,event.clientY);
+
+      if(!pointer.active) setPointerActive(true);
+    }
+
+    /* ---------- 速度模型 ---------- */
+    // 返回 null 表示光点不在页面内（交给阻尼衰减处理）
+    function pointerTargetSpeed () {
+      if(!pointer.active) return null;
+
+      // [阶段三·分区滚动] 手势模式只看“在哪一区”，不依赖 offset 大小：
+      // 左区固定反转、右区固定正转、中间停。这样识别帧率低、掌心有抖动都不影响转速。
+      // 鼠标模式仍然走下面的连续曲线，手感保持原样。
+      if(controlMode==='gesture') return gestureZoneTargetSpeed();
+
+      const offset=pointer.normX-0.5;
+      const dead=Math.max(0,CONFIG.pointerDeadZone);
+
+      // 死区：中心附近转速强制为 0，避免缓慢漂移
+      if(Math.abs(offset)<=dead) return 0;
+
+      const usable=Math.max(0.0001,0.5-dead);
+      const magnitude=clamp((Math.abs(offset)-dead)/usable,0,1);
+      const shaped=CONFIG.pointerCurve==='linear'? magnitude:magnitude*magnitude;
+
+      return (offset<0? -1:1)*CONFIG.pointerMaxSpeed*shaped*CONFIG.pointerDirection;
+    }
+
+    /* ---------- 手势分区 ---------- */
+    /**
+     * 分区滚动：只判断手在左 / 中 / 右哪一区。
+     *  - 跨区时才切换，切换带「迟滞 + 驻留时间」，手在边界抖动不会把转速来回抽
+     *  - 左区 / 右区给固定转速，中间区为 0（停下并吸附）
+     */
+    function gestureZoneTargetSpeed () {
+      const now=performance.now();
+      const x=pointer.normX;
+      const half=Math.max(0.02,CONFIG_GESTURE.handZoneMiddleWidth/2);
+      const hyst=Math.max(0,CONFIG_GESTURE.handZoneHysteresis);
+
+      let next=handZone;
+
+      if(handZone==='middle') {
+        if(x>=0.5+half) next='right';
+        else if(x<=0.5-half) next='left';
+      } else if(handZone==='left') {
+        // 从左侧回中：要越过「边界 + 迟滞」才算真的回到停区
+        if(x>0.5-half+hyst) next='middle';
+      } else if(x<0.5+half-hyst) {
+        next='middle';
+      }
+
+      if(next!==handZone) {
+        const dwell=Math.max(0,CONFIG_GESTURE.handZoneDwellMs);
+        if(now-handZoneChangedAt<dwell) {
+          next=handZone;          // 驻留时间内不允许再换，滤掉单帧抖动
+        } else {
+          handZone=next;
+          handZoneChangedAt=now;
+        }
+      }
+
+      if(handZone==='middle') return 0;
+
+      const dir=handZone==='right'? 1:-1;
+      return dir*CONFIG_GESTURE.handZoneSpeed*CONFIG.pointerDirection;
+    }
+
+    /* ---------- 吸附 ---------- */
+    // 找离弧顶（角度 0）最近的牌，offsetDeg 为该牌相对弧顶的偏差
+    function findNearestCard () {
+      let bestIndex=0;
+      let bestOffset=0;
+      let bestAbs=Infinity;
+
+      for(let i=0;i<cardItems.length;i+=1) {
+        const offsetDeg=wrapRadians((ringRotation+i*CONFIG.angleStep)*DEG)/DEG;
+        const abs=Math.abs(offsetDeg);
+        if(abs<bestAbs) {
+          bestAbs=abs;
+          bestIndex=i;
+          bestOffset=offsetDeg;
+        }
+      }
+
+      return {index: bestIndex,offsetDeg: bestOffset};
+    }
+
+    function releaseSnap () {
+      if(snapIndex===null&&snapAnim===null) return;
+      snapIndex=null;
+      snapAnim=null;
+      clearFocusState();   // 解除选中：取消高亮与充能计时
+    }
+
+    function beginSnap (nearest) {
+      snapAnim={
+        from: ringRotation,
+        to: ringRotation-nearest.offsetDeg,   // 最小位移，直接对齐弧顶
+        start: performance.now(),
+        duration: Math.max(1,CONFIG.snapEaseMs),
+        index: nearest.index
+      };
+    }
+
+    function updateSnap (now) {
+      const t=clamp((now-snapAnim.start)/snapAnim.duration,0,1);
+      const eased=1-Math.pow(1-t,3);   // ease-out cubic：越接近弧顶越慢
+
+      ringRotation=snapAnim.from+(snapAnim.to-snapAnim.from)*eased;
+
+      if(t>=1) {
+        const index=snapAnim.index;
+        ringRotation=snapAnim.to;
+        snapAnim=null;
+        snapIndex=index;
+        // 吸附到位后才选中并开始 0.5s 充能（此后光点微动不会重置它）
+        focusCard(index);
+      }
+    }
+
+    /* ---------- 每帧推进 ---------- */
+    function stepRing (now) {
+      ringFrame=0;
+
+      const dt=ringLastTime? Math.min((now-ringLastTime)/1000,0.05):0;
+      ringLastTime=now;
+
+      // 展示态 / 飞牌中 / 弹窗期间：转盘绝对冻结，不跟光点、不吸附、不充能
+      if(phase!=='browsing'||isBusy||isSceneLocked()) {
+        ringSpeed=0;
+        snapAnim=null;
+        snapIndex=null;
+        ringLastTime=0;
+        return;
+      }
+
+      const target=pointerTargetSpeed();
+
+      if(target===null) {
+        // 光点不在页面内：指数阻尼衰减到停
+        ringSpeed*=Math.exp(-Math.max(0,CONFIG.pointerDampingPerSec)*dt);
+        if(Math.abs(ringSpeed)<0.4) ringSpeed=0;
+      } else if(controlMode==='gesture'&&dt>0) {
+        // 手势识别只有 20fps 左右，转速直接赋值会一跳一跳；
+        // 按时间常数做一次低通，把离散结果插值成连续转速（鼠标模式保持原有的直接跟随）
+        const speedTau=Math.max(0.001,CONFIG_GESTURE.speedSmoothMs/1000);
+        ringSpeed+=(target-ringSpeed)*(1-Math.exp(-dt/speedTau));
+        // 指数逼近不会真正到 0，这里收口，避免停下后 rAF 还空转十几秒
+        if(Math.abs(ringSpeed)<0.5&&Math.abs(target)<0.5) ringSpeed=0;
+      } else {
+        // 光点在页面内：转速直接跟随 offset，过中心自然反向
+        ringSpeed=target;
+      }
+
+      const speedAbs=Math.abs(ringSpeed);
+
+      // [阶段三·分区滚动] 手势进入停区后先“慢”一小会儿再吸附：
+      // 快速从左区划到右区时会穿过中间区，没有这段延迟就会中途被抓住顿一下。
+      // 鼠标模式延迟为 0，吸附时机与原来完全一致。
+      const snapDelay=controlMode==='gesture'
+        ? Math.max(0,CONFIG_GESTURE.handSnapDelayMs)
+        :0;
+
+      if(snapDelay>0&&snapIndex===null&&!snapAnim) {
+        if(speedAbs<=CONFIG.snapSpeedThreshold) {
+          if(!slowSinceAt) slowSinceAt=now;
+        } else {
+          slowSinceAt=0;
+        }
+      } else {
+        slowSinceAt=0;
+      }
+
+      if(snapIndex!==null) {
+        // 已吸附：低于阈值时保持弧顶完全不动；重新加速超过阈值才解除
+        if(speedAbs>CONFIG.snapSpeedThreshold) {
+          releaseSnap();
+          ringRotation+=ringSpeed*dt;
+        }
+      } else if(snapAnim) {
+        if(speedAbs>CONFIG.snapSpeedThreshold) {
+          snapAnim=null;          // 光点重新加速，放弃这次吸附
+        } else {
+          updateSnap(now);
+        }
+      } else {
+        ringRotation+=ringSpeed*dt;
+        if(speedAbs<=CONFIG.snapSpeedThreshold) {
+          const snapReady=snapDelay<=0||!slowSinceAt||now-slowSinceAt>=snapDelay;
+          if(snapReady) {
+            const nearest=findNearestCard();
+            if(Math.abs(nearest.offsetDeg)<=CONFIG.snapAngleToleranceDeg) {
+              beginSnap(nearest);
+            }
+          }
+        }
+      }
+
+      // 每帧只有这一行渲染开销：转圆盘
+      updateRingTransform();
+
+      // 已吸附时保持静止，等 pointermove / 移出事件重新唤起循环即可
+      const moving=snapAnim!==null||(snapIndex===null&&ringSpeed!==0);
+      if(moving) {
+        ringFrame=window.requestAnimationFrame(stepRing);
+      } else {
+        ringSpeed=0;      // 静止后速度归零，避免残留角速度
+        ringLastTime=0;
+      }
+    }
+
+    function requestRingFrame () {
+      if(ringFrame) return;
+      if(phase!=='browsing'||isBusy||isSceneLocked()) return;
+      ringLastTime=0;
+      ringFrame=window.requestAnimationFrame(stepRing);
+    }
+
+    // 进入展示态时调用：把速度 / 吸附状态清零，保证转盘绝对静止
+    function freezeRing () {
+      ringSpeed=0;
+      snapAnim=null;
+      snapIndex=null;
+      slowSinceAt=0;
+      ringLastTime=0;
+      if(ringFrame) {
+        window.cancelAnimationFrame(ringFrame);
+        ringFrame=0;
+      }
+    }
+
+    /* ---------- 事件绑定 ---------- */
+    // [阶段三] 记下鼠标最后位置：从手势切回鼠标时可以直接接管光点
+    const lastMouse={x: window.innerWidth/2,y: window.innerHeight/2,seen: false};
+
+    function bindPointerEvents () {
+      document.addEventListener('pointermove',(event) => {
+        lastMouse.x=event.clientX;
+        lastMouse.y=event.clientY;
+        lastMouse.seen=true;
+        if(controlMode==='mouse') movePointer(event);
+      },{passive: true});
+
+      // 移出页面 / 窗口失焦：隐藏光点、恢复系统光标（转盘会甩出去再阻尼停下）
+      document.documentElement.addEventListener('pointerleave',() => {
+        if(controlMode==='mouse') setPointerActive(false);
+      });
+      document.documentElement.addEventListener('pointerenter',() => {
+        if(controlMode==='mouse') setPointerActive(true);
+      });
+      window.addEventListener('blur',() => {
+        if(controlMode==='mouse') setPointerActive(false);
+      });
+      document.addEventListener('visibilitychange',() => {
+        if(document.visibilityState!=='visible'&&controlMode==='mouse') setPointerActive(false);
+      });
+    }
+
+    /* ============================================================
+       7.2 [阶段三] 手势输入：摄像头 + MediaPipe Hands
+       ------------------------------------------------------------
+       这一层只负责两件事：
+         1) 把掌心 x 交给 applyPointerPosition()，和鼠标共用同一条通道；
+         2) 用“张开→握拳 / 握拳→张开”的边沿调用已有的
+            inputLayer.triggerDraw() / inputLayer.closeReveal()。
+       转盘速度模型、吸附、选中、充能没有任何第二套实现。
+
+       手势判定只用 21 个 landmark 的距离比例，不依赖模型自带分类，
+       所以阈值可以直接在 CONFIG_GESTURE 里调。
+       ============================================================ */
+    const MP_CDN='https://cdn.jsdelivr.net/npm/@mediapipe/';
+    const MP_HANDS_PKG='hands@0.4.1675469240';
+    const MP_SCRIPTS=[
+      `${MP_CDN}${MP_HANDS_PKG}/hands.js`,
+      `${MP_CDN}camera_utils@0.3.1675466862/camera_utils.js`,
+      `${MP_CDN}drawing_utils@0.3.1675466124/drawing_utils.js`
+    ];
+
+    let controlMode='gesture';   // 'gesture' | 'mouse'；不持久化，每次加载默认手势
+    let gestureSession=0;        // 每次切换 / 停止自增，用来作废进行中的异步初始化
+    let gestureStarting=false;   // 正在启动摄像头 + 模型
+    let cameraReady=false;       // 摄像头与模型都已就绪
+    let cameraStream=null;
+    let handsInstance=null;
+    let cameraFrame=0;
+    let lastSendAt=0;            // 上一次送帧时间，用于按 modelFps 节流
+    let handSeenAt=0;
+    let lastHandAt=0;            // 上一帧有效识别时间，用于按真实时间做平滑
+    let cameraSendErrors=0;      // 连续送帧失败次数：模型/WebGL 真的挂了就回退鼠标
+    let smoothPalmX=null;        // 掌心 x 的 EMA 平滑值（原始 0~1，未镜像）
+    let fistActive=false;        // 迟滞后的“握拳”状态
+    let openActive=false;        // 迟滞后的“张开”状态
+    let lastNonFistAt=-1e9;      // 最近一次“不是握拳”的时间：握拳动作的记忆
+    let lastNonOpenAt=-1e9;      // 最近一次“不是张开”的时间：张开动作的记忆
+    let lastFistAt=-1e9;
+    let lastOpenAt=-1e9;
+    let handZone='middle';       // [分区滚动] 手势当前所在区：'left' | 'middle' | 'right'
+    let handZoneChangedAt=0;     // 上一次换区时间，用于驻留去抖
+    let slowSinceAt=0;           // 转速掉到阈值以下的时间，用于停区“延迟吸附”
+
+    /* ---------- 面板 UI ---------- */
+    function setHandStatus (kind,text) {
+      dom.handStatus.textContent=text;
+      dom.handPanel.classList.toggle('is-loading',kind==='loading');
+      dom.handPanel.classList.toggle('is-failed',kind==='failed');
+    }
+
+    function setHandHint (text) {
+      dom.handHint.textContent=text;
+    }
+
+    // [阶段三] 预览窗里的实时手型提示，只在变化时改 DOM
+    const HAND_GESTURE_TEXT={
+      fist: '握拳',
+      open: '张开',
+      neutral: '过渡',
+      none: '未识别'
+    };
+
+    function setHandGesture (state) {
+      const el=dom.handGesture;
+      if(!el) return;
+
+      const key=HAND_GESTURE_TEXT[state]? state:'none';
+      if(el.dataset.state===key) return;
+
+      el.dataset.state=key;
+      el.textContent=HAND_GESTURE_TEXT[key];
+      el.classList.toggle('is-fist',key==='fist');
+      el.classList.toggle('is-open',key==='open');
+    }
+
+    function syncModeUI () {
+      const isGesture=controlMode==='gesture';
+
+      dom.handPanel.classList.toggle('is-mouse',!isGesture);
+      dom.modeGestureBtn.classList.toggle('is-active',isGesture);
+      dom.modeMouseBtn.classList.toggle('is-active',!isGesture);
+      dom.modeGestureBtn.setAttribute('aria-pressed',String(isGesture));
+      dom.modeMouseBtn.setAttribute('aria-pressed',String(!isGesture));
+
+      // 浏览态提示语跟着输入源走
+      if(phase==='browsing') setHeroHint(browseHint());
+
+      if(isGesture) {
+        if(cameraReady) setHandStatus('gesture','手势模式');
+        else setHandStatus('loading','加载中');
+        return;
+      }
+
+      setHandStatus('mouse','鼠标模式');
+      setHandHint('已切换鼠标模式 · 点「手势」可重新开启摄像头');
+    }
+
+    // 切换输入源时只把光点藏起来，不触发“甩出去”的转速（那是真的离开页面才做的事）
+    function clearPointerForModeSwitch () {
+      pointer.active=false;
+      smoothPalmX=null;
+      handZone='middle';
+      handZoneChangedAt=0;
+      slowSinceAt=0;
+      dom.pointerGlow.classList.remove('is-visible');
+      document.body.classList.remove('is-pointer-active');
+    }
+
+    // 切到鼠标模式后，若鼠标已经在页面里，直接把光点交还给鼠标
+    function adoptMousePointer () {
+      if(!lastMouse.seen) return;
+      applyPointerPosition(lastMouse.x,lastMouse.y);
+      setPointerActive(true);
+    }
+
+    /* ---------- 摄像头 / 模型 ---------- */
+    function loadScriptOnce (src) {
+      return new Promise((resolve,reject) => {
+        const existing=Array.from(document.scripts).find((script) => script.src===src);
+        if(existing) {
+          if(existing.dataset.loaded==='1') {resolve(); return;}
+          existing.addEventListener('load',() => resolve(),{once: true});
+          existing.addEventListener('error',() => reject(new Error('script:'+src)),{once: true});
+          return;
+        }
+
+        const script=document.createElement('script');
+        script.src=src;
+        script.crossOrigin='anonymous';
+        script.async=true;
+        script.addEventListener('load',() => {
+          script.dataset.loaded='1';
+          resolve();
+        },{once: true});
+        script.addEventListener('error',() => reject(new Error('script:'+src)),{once: true});
+        document.head.appendChild(script);
+      });
+    }
+
+    async function ensureHands () {
+      for(const src of MP_SCRIPTS) {
+        await loadScriptOnce(src);
+      }
+
+      if(typeof window.Hands!=='function') throw new Error('hands-unavailable');
+
+      const hands=new window.Hands({
+        locateFile: (file) => `${MP_CDN}${MP_HANDS_PKG}/${file}`
+      });
+      hands.setOptions({
+        maxNumHands: CONFIG_GESTURE.maxNumHands,
+        modelComplexity: CONFIG_GESTURE.modelComplexity,
+        minDetectionConfidence: CONFIG_GESTURE.minDetectionConfidence,
+        minTrackingConfidence: CONFIG_GESTURE.minTrackingConfidence
+      });
+      hands.onResults(handleHandResults);
+
+      if(typeof hands.initialize==='function') {
+        await hands.initialize();
+      }
+
+      return hands;
+    }
+
+    function requestCamera () {
+      if(!navigator.mediaDevices||typeof navigator.mediaDevices.getUserMedia!=='function') {
+        const error=new Error('mediaDevices-unavailable');
+        error.name='NotSupportedError';
+        return Promise.reject(error);
+      }
+
+      return navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          width: {ideal: CONFIG_GESTURE.cameraWidth},
+          height: {ideal: CONFIG_GESTURE.cameraHeight},
+          frameRate: {ideal: CONFIG_GESTURE.cameraFrameRate},
+          facingMode: 'user'
+        }
+      });
+    }
+
+    function stopStream (stream) {
+      if(!stream) return;
+      stream.getTracks().forEach((track) => {
+        try {track.stop();} catch(error) { /* 忽略 */}
+      });
+    }
+
+    function closeHands (hands) {
+      if(!hands) return;
+      try {
+        const result=hands.close();
+        if(result&&typeof result.catch==='function') result.catch(() => {});
+      } catch(error) { /* 忽略 */}
+    }
+
+    function stopCamera () {
+      cameraReady=false;
+      gestureStarting=false;
+      cameraSendErrors=0;
+      lastSendAt=0;
+
+      if(cameraFrame) {
+        window.cancelAnimationFrame(cameraFrame);
+        cameraFrame=0;
+      }
+
+      stopStream(cameraStream);
+      cameraStream=null;
+
+      if(dom.handVideo) {
+        try {dom.handVideo.pause();} catch(error) { /* 忽略 */}
+        dom.handVideo.srcObject=null;
+      }
+
+      closeHands(handsInstance);
+      handsInstance=null;
+
+      clearHandCanvas();
+      smoothPalmX=null;
+      fistActive=false;
+      openActive=false;
+      lastNonFistAt=-1e9;
+      lastNonOpenAt=-1e9;
+      lastHandAt=0;
+      setHandGesture('none');
+    }
+
+    async function startGesture () {
+      if(controlMode!=='gesture'||cameraReady||gestureStarting) return;
+
+      gestureStarting=true;
+      const session=gestureSession;
+
+      dom.handPanel.classList.remove('is-failed');
+      setHandStatus('loading','加载中');
+      if(dom.handLoadingText) dom.handLoadingText.textContent='正在连接摄像头与手势模型…';
+      setHandHint('正在连接摄像头与手势模型…');
+
+      const timeoutId=window.setTimeout(() => {
+        if(session!==gestureSession||cameraReady) return;
+        const error=new Error('init-timeout');
+        error.code='timeout';
+        handleGestureError(error);
+      },CONFIG_GESTURE.initTimeoutMs);
+
+      try {
+        const hands=await ensureHands();
+        if(session!==gestureSession) {closeHands(hands); return;}
+
+        const stream=await requestCamera();
+        if(session!==gestureSession) {stopStream(stream); closeHands(hands); return;}
+
+        cameraStream=stream;
+        handsInstance=hands;
+
+        dom.handVideo.srcObject=stream;
+        await dom.handVideo.play().catch(() => {});
+
+        if(session!==gestureSession) {stopCamera(); return;}
+
+        cameraReady=true;
+        gestureStarting=false;
+        cameraSendErrors=0;
+        lastSendAt=0;
+        window.clearTimeout(timeoutId);
+
+        dom.handPanel.classList.remove('is-loading','is-failed');
+        setHandStatus('gesture','手势模式');
+        setHandHint('掌心转牌阵 · 握拳抽取 · 张开手掌收牌');
+
+        smoothPalmX=null;
+        handSeenAt=performance.now();
+        // 重新启动识别时清空手型状态，避免上一次的“握拳/张开”残留
+        fistActive=false;
+        openActive=false;
+        lastNonFistAt=-1e9;
+        lastNonOpenAt=-1e9;
+        lastHandAt=0;
+        handZone='middle';
+        handZoneChangedAt=0;
+        slowSinceAt=0;
+        setHandGesture('none');
+        pumpCamera();
+      } catch(error) {
+        window.clearTimeout(timeoutId);
+        if(session!==gestureSession) return;
+        gestureStarting=false;
+        handleGestureError(error);
+      }
+    }
+
+    // 摄像头 / 模型出问题：统一回退鼠标模式，并把原因写在面板上
+    function handleGestureError (error) {
+      const name=error&&error.name;
+      const code=error&&error.code;
+      const message=String(error&&error.message||'');
+
+      gestureSession+=1;   // 作废仍在进行中的初始化
+      gestureStarting=false;
+      stopCamera();
+
+      let hint='手势初始化失败，已切换鼠标模式（可点「手势」重试）';
+      if(code==='timeout') {
+        hint=`手势初始化超时（${Math.round(CONFIG_GESTURE.initTimeoutMs/1000)}s），已切换鼠标模式（可点「手势」重试）`;
+      } else if(name==='NotAllowedError'||name==='SecurityError') {
+        hint='摄像头权限被拒绝，已切换鼠标模式（授权后可点「手势」重试）';
+      } else if(name==='NotFoundError'||name==='DevicesNotFoundError'||name==='OverconstrainedError') {
+        hint='未检测到可用摄像头，已切换鼠标模式';
+      } else if(name==='NotSupportedError') {
+        hint='当前环境不支持摄像头，已切换鼠标模式';
+      } else if(message.startsWith('script:')||message==='hands-unavailable') {
+        hint='手势模型加载失败，已切换鼠标模式（可点「手势」重试）';
+      }
+
+      switchToMouse(hint);
+    }
+
+    function switchToMouse (message) {
+      controlMode='mouse';
+      gestureSession+=1;
+      gestureStarting=false;
+      stopCamera();
+      clearPointerForModeSwitch();
+      adoptMousePointer();
+      syncModeUI();
+      // syncModeUI 会把状态重置成普通鼠标模式，这里再标一次“失败回退”
+      setHandStatus('failed','鼠标模式');
+      setHandHint(message||'已切换鼠标模式 · 点「手势」可重新开启摄像头');
+    }
+
+    function setControlMode (next) {
+      const target=next==='gesture'? 'gesture':'mouse';
+
+      if(target===controlMode) {
+        // 已经是该模式：手势模式下若尚未就绪（例如上次失败 / 超时），点一下就当重试
+        if(target==='gesture'&&!cameraReady&&!gestureStarting) {
+          dom.handPanel.classList.remove('is-failed');
+          startGesture();
+        }
+        return;
+      }
+
+      controlMode=target;
+      gestureSession+=1;
+      gestureStarting=false;
+      dom.handPanel.classList.remove('is-failed');
+
+      if(target==='mouse') {
+        stopCamera();
+        clearPointerForModeSwitch();
+        adoptMousePointer();
+        syncModeUI();
+        return;
+      }
+
+      // 切回手势：隐藏旧光点，重新启动摄像头与模型
+      clearPointerForModeSwitch();
+      dom.handPanel.classList.add('is-loading');
+      syncModeUI();
+      startGesture();
+    }
+
+    /* ---------- 帧循环 ---------- */
+    function pumpCamera () {
+      if(!cameraReady||controlMode!=='gesture') return;
+
+      cameraFrame=window.requestAnimationFrame(async () => {
+        if(!cameraReady||controlMode!=='gesture') return;
+
+        const now=performance.now();
+        const minInterval=1000/Math.max(1,CONFIG_GESTURE.modelFps);
+        const video=dom.handVideo;
+
+        if(
+          now-lastSendAt>=minInterval&&
+          handsInstance&&
+          video&&
+          video.readyState>=2
+        ) {
+          lastSendAt=now;
+          try {
+            await handsInstance.send({image: video});
+            cameraSendErrors=0;
+          } catch(error) {
+            cameraSendErrors+=1;
+            console.warn('[Birthday Tarot] 手势帧发送失败：',error);
+            // 连续失败说明模型 / 推理环境不可用，直接回退鼠标，别让用户干等
+            if(cameraSendErrors>=12) {
+              handleGestureError(error);
+              return;
+            }
+          }
+        }
+
+        pumpCamera();
+      });
+    }
+
+    /* ---------- 手部判定 ---------- */
+    function handDistance (a,b) {
+      return Math.hypot(a.x-b.x,a.y-b.y);
+    }
+
+    /**
+     * 只根据 landmark 距离判断手型，返回：
+     *  valid / palmX / palmY / fist / open / ratios
+     * 掌心 = landmark 0(腕) 与 5/9/13/17(四个掌指关节) 的平均。
+     * 所有距离都除以掌长(0→9)，这样手离镜头远近不影响判定。
+     */
+    function analyzeHand (landmarks,handedness) {
+      if(!Array.isArray(landmarks)||landmarks.length<21) return {valid: false};
+
+      const score=handedness&&typeof handedness.score==='number'? handedness.score:1;
+      if(score<CONFIG_GESTURE.confidenceThreshold) return {valid: false};
+
+      const palmPoints=[0,5,9,13,17];
+      let palmX=0;
+      let palmY=0;
+      for(const index of palmPoints) {
+        palmX+=landmarks[index].x;
+        palmY+=landmarks[index].y;
+      }
+      palmX/=palmPoints.length;
+      palmY/=palmPoints.length;
+
+      const palmLength=handDistance(landmarks[0],landmarks[9]);
+      if(palmLength<0.02) return {valid: false};   // 手太远 / 数据异常，本帧忽略
+
+      // [8,5] 食指、[12,9] 中指、[16,13] 无名指、[20,17] 小指
+      const fingerPairs=[[8,5],[12,9],[16,13],[20,17]];
+      const ratios=fingerPairs.map(([tip,base]) =>
+        handDistance(landmarks[tip],landmarks[base])/palmLength);
+
+      // 握拳 / 张开由 updateGestureState 用“迟滞阈值”判定，这里只给原始比例
+      return {valid: true,palmX,palmY,palmLength,ratios};
+    }
+
+    /* ---------- 手型状态机（迟滞 + 记忆） ---------- */
+    /**
+     * 把每帧的原始比例转成稳定的手型状态，并给出“上升沿”：
+     *   进入握拳要严格（四指都 < fistRatio），退出要宽松（> fistExitRatio 才松开）；
+     *   张开同理。这样手停在阈值附近时状态不会来回跳。
+     * 同时刷新“最近不是某状态”的时间，供 handleGestureEdges 做跨丢帧的记忆判断。
+     */
+    function updateGestureState (info,now) {
+      const ratios=info.ratios;
+      const allBelow=(threshold) => ratios.every((ratio) => ratio<threshold);
+      const openCountAbove=(threshold) =>
+        ratios.slice(0,3).filter((ratio) => ratio>threshold).length;
+
+      const wasFist=fistActive;
+      const wasOpen=openActive;
+
+      if(fistActive) {
+        if(!allBelow(CONFIG_GESTURE.fistExitRatio)) fistActive=false;
+      } else if(allBelow(CONFIG_GESTURE.fistRatio)) {
+        fistActive=true;
+      }
+
+      if(openActive) {
+        if(openCountAbove(CONFIG_GESTURE.openExitRatio)<3) openActive=false;
+      } else if(openCountAbove(CONFIG_GESTURE.openRatio)===3) {
+        openActive=true;
+      }
+
+      // 两组阈值不重叠，保险起见握拳优先
+      if(fistActive) openActive=false;
+
+      const state=fistActive? 'fist':(openActive? 'open':'neutral');
+
+      if(state!=='fist') lastNonFistAt=now;
+      if(state!=='open') lastNonOpenAt=now;
+
+      return {
+        state,
+        fistOnset: fistActive&&!wasFist,
+        openOnset: openActive&&!wasOpen
+      };
+    }
+
+    /* ---------- 边沿触发 ---------- */
+    function handleGestureEdges (gesture,now) {
+      // 完成弹窗 / 信弹窗期间：手势完全不响应（只保持识别，不触发任何动作）
+      if(isSceneLocked()) return;
+
+      const browsing=phase==='browsing'&&!isBusy;
+      const revealed=phase==='revealed'&&!isBusy;
+      const memory=CONFIG_GESTURE.gestureMemoryMs;
+
+      // 浏览态：只认“进入握拳”的那一帧。
+      // 只要最近 memory 毫秒内手不是握拳（张开或过渡态都算），这次动作就有效——
+      // 不必在上一次识别里刚好是“完全张开”，也不怕中间丢一两帧。
+      if(
+        browsing&&
+        gesture.fistOnset&&
+        now-lastNonFistAt<=memory&&
+        now-lastFistAt>=CONFIG_GESTURE.fistCooldownMs
+      ) {
+        lastFistAt=now;
+        if(inputLayer.triggerDraw()) {
+          setLiveMessage('握拳已确认，正在翻开牌面。');
+        }
+      }
+
+      // 展示态：只认“进入张开”的那一帧，记忆规则同上
+      if(
+        revealed&&
+        gesture.openOnset&&
+        now-lastNonOpenAt<=memory&&
+        now-lastOpenAt>=CONFIG_GESTURE.palmOpenCooldownMs
+      ) {
+        lastOpenAt=now;
+        if(inputLayer.closeReveal()) {
+          setLiveMessage('张开手掌，正在收起牌面。');
+        }
+      }
+    }
+
+    /* ---------- MediaPipe 回调 ---------- */
+    function handleHandResults (results) {
+      if(controlMode!=='gesture'||!cameraReady) return;
+
+      drawHandLandmarks(results);
+
+      const landmarks=results&&results.multiHandLandmarks&&results.multiHandLandmarks[0];
+      const handedness=results&&results.multiHandedness&&results.multiHandedness[0];
+      const info=analyzeHand(landmarks,handedness);
+      const now=performance.now();
+
+      if(!info.valid) {
+        // 手离开画面：超过宽限期才当作“光点离开”，避免跟踪抖动让转速抽风
+        if(now-handSeenAt>CONFIG_GESTURE.lostHandGraceMs) {
+          smoothPalmX=null;
+          if(pointer.active) setPointerActive(false);
+        }
+        setHandGesture('none');
+        // 注意：这里不再清空握拳 / 张开的记忆，丢一两帧不会让这次动作作废
+        return;
+      }
+
+      handSeenAt=now;
+
+      // 掌心 x 做 EMA 平滑；平滑系数按“真实经过时间”算，识别帧率高低时手感一致
+      const handDt=clamp((now-lastHandAt)/1000,0.001,0.25);
+      lastHandAt=now;
+      const smoothing=1-Math.exp(-handDt/Math.max(0.001,CONFIG_GESTURE.smoothTimeMs/1000));
+
+      // 再 1-x 映射，和镜像预览方向一致
+      smoothPalmX=smoothPalmX===null
+        ? info.palmX
+        :smoothPalmX+(info.palmX-smoothPalmX)*smoothing;
+
+      const screenX=(1-smoothPalmX)*window.innerWidth;
+      const screenY=info.palmY*window.innerHeight;
+
+      applyPointerPosition(screenX,screenY);
+      if(!pointer.active) setPointerActive(true);
+
+      const gesture=updateGestureState(info,now);
+      setHandGesture(gesture.state);
+      handleGestureEdges(gesture,now);
+    }
+
+    function clearHandCanvas () {
+      const canvas=dom.handCanvas;
+      if(!canvas) return;
+      const ctx=canvas.getContext('2d');
+      if(ctx) ctx.clearRect(0,0,canvas.width,canvas.height);
+    }
+
+    function drawHandLandmarks (results) {
+      const canvas=dom.handCanvas;
+      if(!canvas) return;
+
+      const ctx=canvas.getContext('2d');
+      if(!ctx) return;
+
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+
+      const hands=results&&results.multiHandLandmarks;
+      if(!hands||!hands.length) return;
+      if(typeof window.drawConnectors!=='function'||!window.HAND_CONNECTIONS) return;
+
+      for(const landmarks of hands) {
+        window.drawConnectors(ctx,landmarks,window.HAND_CONNECTIONS,{
+          color: 'rgba(206, 168, 255, 0.85)',
+          lineWidth: 2
+        });
+        window.drawLandmarks(ctx,landmarks,{
+          color: 'rgba(255, 246, 255, 0.95)',
+          fillColor: 'rgba(160, 100, 230, 0.55)',
+          lineWidth: 1,
+          radius: 2
+        });
+      }
+    }
+
+    /* ---------- 模式切换控件 ---------- */
+    function bindGestureControls () {
+      dom.modeGestureBtn.addEventListener('click',(event) => {
+        event.stopPropagation();
+        setControlMode('gesture');
+      });
+
+      dom.modeMouseBtn.addEventListener('click',(event) => {
+        event.stopPropagation();
+        setControlMode('mouse');
+      });
+
+      // 点面板本身不应该被当成“点空白 / 确认抽取”
+      dom.handPanel.addEventListener('click',(event) => {
+        event.stopPropagation();
+      });
+    }
+
+    function getRevealSize () {
+      // 竖版卡牌：先受屏幕宽度限制，再根据高度限制换算成可用宽度
+      const maxWidthByViewport=window.innerWidth*CONFIG.revealWidthVw;
+      const maxWidthByHeight=window.innerHeight*CONFIG.revealHeightVh*
+        (CONFIG.cardAspectW/CONFIG.cardAspectH);
+      const width=Math.min(
+        maxWidthByViewport,
+        maxWidthByHeight,
+        CONFIG.revealMaxWidthPx
+      );
+
+      return {
+        width,
+        height: width*(CONFIG.cardAspectH/CONFIG.cardAspectW)
+      };
+    }
+
+    function centerDisplayedCard () {
+      if(currentIndex===null) return;
+      const item=cardItems[currentIndex];
+      if(!item) return;
+
+      const size=getRevealSize();
+      item.el.style.left=`${(window.innerWidth-size.width)/2}px`;
+      item.el.style.top=`${(window.innerHeight-size.height)/2}px`;
+      item.el.style.width=`${size.width}px`;
+      item.el.style.height=`${size.height}px`;
+      item.el.style.transform='none';
+    }
+
+    /* ============================================================
+       8. 焦点与充能
+       ============================================================ */
+    function clearChargeTimer () {
+      if(chargeTimer) {
+        window.clearTimeout(chargeTimer);
+        chargeTimer=0;
+      }
+    }
+
+    function clearFocusClasses () {
+      cardItems.forEach((item) => {
+        item.el.classList.remove('is-focused','is-ready');
+        item.el.classList.remove('is-impatient');
+      });
+    }
+
+    function clearFocusState (updateHint=true) {
+      clearChargeTimer();
+      clearFocusClasses();
+      readyIndex=null;
+      focusedIndex=null;
+      if(updateHint&&phase==='browsing') {
+        setHeroHint(browseHint());
+      }
+    }
+
+    function focusCard (index) {
+      if(phase!=='browsing'||isBusy) return false;
+
+      const normalizedIndex=Number.isInteger(index)&&index>=0&&index<TOTAL
+        ? index
+        :null;
+
+      if(normalizedIndex===focusedIndex) {
+        return true;
+      }
+
+      clearChargeTimer();
+      clearFocusClasses();
+      readyIndex=null;
+      focusedIndex=normalizedIndex;
+
+      if(focusedIndex===null) {
+        setHeroHint(browseHint());
+        return true;
+      }
+
+      const item=cardItems[focusedIndex];
+      if(!item) {
+        focusedIndex=null;
+        return false;
+      }
+
+      // 移除后再添加，确保切换 / 移走再移回时光晕动画从 0 重新计时
+      item.el.classList.remove('is-focused','is-ready');
+      void item.el.offsetWidth;
+      item.el.classList.add('is-focused');
+
+      if(drawnIds.has(item.id)) {
+        setHeroHint(`第 ${padTwo(item.index+1)} 号牌已被翻阅 · 轻点可重温`);
+      } else {
+        setHeroHint(`...`);
+      }
+
+      chargeTimer=window.setTimeout(() => {
+        if(phase!=='browsing'||isBusy||focusedIndex!==normalizedIndex) return;
+        readyIndex=normalizedIndex;
+        item.el.classList.add('is-ready');
+        if(drawnIds.has(item.id)) {
+          setHeroHint(`第 ${padTwo(item.index+1)} 号牌已点亮 · 轻点重温它`);
+        } else {
+          setHeroHint('星辉已落满 · 轻点卡牌或握拳，翻开它。');
+          setLiveMessage(`第 ${item.index+1} 张牌已可抽取，点击翻开。`);
+        }
+      },CONFIG.chargeDurationMs);
+
+      return true;
+    }
+
+    function nudgeUnchargedCard (index) {
+      const item=cardItems[index];
+      if(!item) return;
+
+      item.el.classList.remove('is-impatient');
+      void item.el.offsetWidth;
+      item.el.classList.add('is-impatient');
+
+      setHeroHint('星辉还未落满 · 再停留片刻，再轻轻点它。',true);
+      setLiveMessage('这张牌仍在充能，请稍候。');
+      window.setTimeout(() => item.el.classList.remove('is-impatient'),540);
+    }
+
+    /* ============================================================
+       9. 抽取 / 展示 / 关闭
+       ============================================================ */
+    function updateProgress () {
+      const count=drawnIds.size;
+      const percent=TOTAL===0? 0:(count/TOTAL)*100;
+
+      dom.drawnCount.textContent=String(count);
+      dom.progressRing.style.setProperty('--progress',`${percent}%`);
+      dom.progress.setAttribute('aria-label',`已抽取 ${count} / ${TOTAL}`);
+      document.body.classList.toggle('is-all-drawn',count===TOTAL);
+    }
+
+    /**
+     * 开牌与收牌共用同一套 3D 翻转逻辑。
+     * 不使用 CSS transition，避免翻牌在 DOM 移动时因过渡未启动而“停顿”。
+     */
+    function animateCardFlip (item,fromDeg,toDeg,delayMs=0) {
+      if(!item||!item.el) return null;
+      if(item.innerAnimation) {
+        item.innerAnimation.cancel();
+        item.innerAnimation=null;
+      }
+
+      const inner=item.el.querySelector('.card__inner');
+      if(!inner) return null;
+
+      const animation=inner.animate(
+        [
+          {transform: `rotateY(${fromDeg}deg)`},
+          {transform: `rotateY(${toDeg}deg)`}
+        ],
+        {
+          duration: CONFIG.flipDurationMs,
+          delay: delayMs,
+          easing: 'cubic-bezier(0.2, 0.76, 0.24, 1)',
+          fill: 'forwards'
+        }
+      );
+
+      item.innerAnimation=animation;
+      return animation;
+    }
+
+    function revealCard (index) {
+      if(phase!=='browsing'||isBusy) return false;
+
+      const item=cardItems[index];
+      if(!item) return false;
+
+      const wasDrawn=drawnIds.has(item.id);
+      if(!wasDrawn&&readyIndex!==index) {
+        nudgeUnchargedCard(index);
+        return false;
+      }
+
+      // [转盘] 牌在屏幕上的位置由“当前 rotation + 它在盘上的角度”现算
+      const arc=getCardArc(item);
+
+      const revealSize=getRevealSize();
+      const vw=window.innerWidth;
+      const vh=window.innerHeight;
+      const startLift=CONFIG.focusLiftPx;
+      const startScaleInFocus=arc.depthScale*CONFIG.focusScale;
+      const endScale=revealSize.width/arc.baseWidth;
+      const dx=vw/2-arc.centerX;
+      const dy=vh/2-arc.centerY;
+      const isNew=!wasDrawn;
+
+      // [阶段二] 进入展示态：立刻冻结转盘，之后光点怎么动都不会再带动牌阵
+      freezeRing();
+
+      phase='revealed';
+      isBusy=true;
+      currentIndex=index;
+      readyIndex=null;
+      focusedIndex=null;
+      updateLetterButton();   // 展示态隐藏“查看信”
+      clearChargeTimer();
+      clearFocusClasses();
+
+      // 先计入已抽取（本阶段不做持久化，刷新后全部重置为未抽）
+      if(isNew) {
+        drawnIds.add(item.id);
+        markCardAsDrawn(item);
+        updateProgress();
+        setLiveMessage(`第 ${index+1} 张牌已翻开。已抽取 ${drawnIds.size} / ${TOTAL}。`);
+      } else {
+        setLiveMessage(`正在重温第 ${index+1} 张牌。`);
+      }
+
+      // 把当前牌移到 body 顶层。.card-stage 是 fixed 定位，会形成独立层叠上下文；
+      // 只有移到 body 下，展示中的牌才能稳定地盖在毛玻璃遮罩之上。
+      item.el.classList.remove('card--entering');
+      document.body.appendChild(item.el);
+
+      // 将按钮切换成 fixed，起点仍与牌阵中的视觉位置一致
+      item.el.style.left=`${arc.centerX-arc.baseWidth/2}px`;
+      item.el.style.top=`${arc.centerY-arc.baseHeight/2}px`;
+      item.el.style.width=`${arc.baseWidth}px`;
+      item.el.style.height=`${arc.baseHeight}px`;
+      item.el.classList.remove('is-flipped');
+      item.el.classList.add('card--flying','is-current');
+
+      // 先向外飞出，临近中心时再快速翻面；收牌继续使用同一个翻转函数
+      animateCardFlip(item,0,180,CONFIG.flipStartDelayMs);
+
+      document.body.classList.add('is-revealed');
+      setVeilVisible(true);
+      setRevealHint(
+        isNew? '命运正在展开':'旧日星语正在回响',
+        '片刻之后，轻点空白处或张开手掌收起',
+        true
+      );
+
+      // 起点包含“选中态”的浮起与放大，这样切换 fixed 时不会产生跳变。
+      // 飞行段先完整走完，随后在中心保持位置，只让卡牌继续完成翻面，避免“翻完再走”造成停顿。
+      const startTransform=`translate(0px, ${-startLift}px) rotate(${arc.angleDeg}deg) scale(${startScaleInFocus})`;
+      const endTransform=`translate(${dx}px, ${dy}px) rotate(0deg) scale(${endScale})`;
+
+      const totalMotionMs=Math.max(
+        CONFIG.flightDurationMs,
+        CONFIG.flipStartDelayMs+CONFIG.flipDurationMs
+      );
+      const travelOffset=clamp(CONFIG.flightDurationMs/totalMotionMs,0,1);
+
+      const animation=item.el.animate(
+        [
+          {
+            transform: startTransform,
+            offset: 0,
+            easing: 'cubic-bezier(0.16, 0.84, 0.24, 1)'
+          },
+          {transform: endTransform,offset: travelOffset},
+          {transform: endTransform,offset: 1}
+        ],
+        {
+          duration: totalMotionMs,
+          fill: 'forwards'
+        }
+      );
+
+      item.animation=animation;
+
+      animation.onfinish=() => {
+        if(phase!=='revealed'||currentIndex!==index) return;
+        finishReveal(item,animation,isNew);
+      };
+
+      return true;
+    }
+
+    function finishReveal (item,animation,isNew) {
+      // 把最终的 transform 尺寸落成真实布局，之后不再依赖动画 fill
+      item.el.classList.add('card--displayed','is-flipped');
+      item.el.classList.remove('card--flying');
+      centerDisplayedCard();
+
+      if(item.innerAnimation) {
+        item.innerAnimation.cancel();
+        item.innerAnimation=null;
+      }
+      if(animation) {
+        animation.cancel();
+      }
+      item.animation=null;
+
+      isBusy=false;
+      cooldownUntil=performance.now()+CONFIG.revealCooldownMs;
+
+      const cooldownSeconds=CONFIG.revealCooldownMs/1000;
+      setRevealHint(
+        '星牌已为你展开',
+        `静候 ${cooldownSeconds} 秒，轻点空白处收起`,
+        true
+      );
+
+      if(hintTimer) window.clearTimeout(hintTimer);
+      hintTimer=window.setTimeout(() => {
+        if(phase==='revealed'&&!isBusy&&currentIndex===item.index) {
+          setRevealHint(
+            '星牌已为你展开',
+            '轻点空白处或张开手掌，收起这张牌',
+            true
+          );
+        }
+      },CONFIG.revealCooldownMs);
+
+      if(isNew&&drawnIds.size===TOTAL) {
+        scheduleCompletion();
+      }
+    }
+
+    function scheduleCompletion () {
+      if(completionCelebrated||completionOpen) return;
+      completionCelebrated=true;
+      if(completionTimer) window.clearTimeout(completionTimer);
+      completionTimer=window.setTimeout(openCompletion,CONFIG.completionDelayMs);
+    }
+
+    function closeReveal () {
+      if(phase!=='revealed'||isBusy||currentIndex===null) return false;
+      if(performance.now()<cooldownUntil) return false;
+
+      const item=cardItems[currentIndex];
+      if(!item) return false;
+
+      isBusy=true;
+
+      const displayedWidth=parseFloat(item.el.style.width)||window.innerWidth;
+      const displayedHeight=parseFloat(item.el.style.height)||displayedWidth*(CONFIG.cardAspectH/CONFIG.cardAspectW);
+      const arc=getCardArc(item);
+
+      const dx=arc.centerX-window.innerWidth/2;
+      const dy=arc.centerY-window.innerHeight/2;
+      const endScale=(arc.baseWidth*arc.depthScale)/displayedWidth;
+
+      // 固定住当前中心位置，开始反向飞回
+      item.el.style.left=`${(window.innerWidth-displayedWidth)/2}px`;
+      item.el.style.top=`${(window.innerHeight-displayedHeight)/2}px`;
+      item.el.style.width=`${displayedWidth}px`;
+      item.el.style.height=`${displayedHeight}px`;
+      item.el.style.transform='none';
+      item.el.classList.remove('card--displayed');
+      item.el.classList.add('card--returning');
+
+      // 收牌翻回背面：与开牌共用 animateCardFlip
+      animateCardFlip(item,180,0);
+
+      setVeilVisible(false);
+      setRevealHint('','',false);
+      if(hintTimer) {
+        window.clearTimeout(hintTimer);
+        hintTimer=0;
+      }
+
+      const animation=item.el.animate(
+        [
+          {transform: 'translate(0px, 0px) rotate(0deg) scale(1)',offset: 0},
+          {
+            transform: `translate(${dx*0.45}px, ${dy*0.72}px) rotate(${arc.angleDeg*0.55}deg) scale(${Math.max(endScale,0.82)})`,
+            offset: 0.52
+          },
+          {
+            transform: `translate(${dx}px, ${dy}px) rotate(${arc.angleDeg}deg) scale(${endScale})`,
+            offset: 1
+          }
+        ],
+        {
+          duration: CONFIG.returnDurationMs,
+          easing: 'cubic-bezier(0.55, 0.04, 0.2, 1)',
+          fill: 'forwards'
+        }
+      );
+
+      item.animation=animation;
+
+      animation.onfinish=() => {
+        if(phase!=='revealed') return;
+        finishClose(item,animation);
+      };
+
+      return true;
+    }
+
+    function finishClose (item,animation) {
+      if(animation) animation.cancel();
+      item.animation=null;
+
+      if(item.innerAnimation) {
+        item.innerAnimation.cancel();
+        item.innerAnimation=null;
+      }
+
+      item.el.classList.remove('card--returning','is-current','is-flipped');
+
+      // 归位完成后按原索引放回圆盘（保持键盘 Tab 顺序）
+      const nextItem=cardItems[item.index+1];
+      if(nextItem&&nextItem.el.parentElement===dom.ringRoot) {
+        dom.ringRoot.insertBefore(item.el,nextItem.el);
+      } else {
+        dom.ringRoot.appendChild(item.el);
+      }
+
+      // [转盘] 位置由 --rx/--ry/--ra 决定，left/top 清回自动；尺寸恢复成盘上的基准尺寸
+      item.el.style.left='';
+      item.el.style.top='';
+      item.el.style.width=`${item.baseWidth}px`;
+      item.el.style.height=`${item.baseHeight}px`;
+      item.el.style.transform='';
+
+      phase='browsing';
+      isBusy=false;
+      currentIndex=null;
+      cooldownUntil=0;
+      focusedIndex=null;
+      readyIndex=null;
+      document.body.classList.remove('is-revealed');
+
+      setHeroHint(
+        drawnIds.size===TOTAL
+          ? '十三张命运皆已显现 · 可随时重温任意一张'
+          :browseHint()
+      );
+      setLiveMessage(
+        drawnIds.size===TOTAL
+          ? '已收起牌面。十三张卡牌已全部揭晓。'
+          :'已收起牌面，回到牌阵。'
+      );
+
+      // [阶段二] 回到浏览态：若光点仍在页面内，继续按它的位置驱动转盘 / 重新吸附
+      requestRingFrame();
+      updateLetterButton();   // 解锁后回到浏览态，“查看信”才出现
+    }
+
+    /* ============================================================
+       10. 完成弹窗 / 信弹窗
+       ------------------------------------------------------------
+       两个弹窗打开期间，转盘、选牌、抽取、收牌全部冻结；
+       “查看信”按钮在完成弹窗首次出现时解锁，只在浏览态显示。
+       ============================================================ */
+
+    // 弹窗期间锁住整个牌阵交互
+    function isSceneLocked () {
+      return completionOpen||letterOpen;
+    }
+
+    // [阶段三·信] 按钮只在“已解锁 + 浏览态 + 没有弹窗”时出现
+    function updateLetterButton () {
+      if(!dom.letterBtn) return;
+      const visible=letterUnlocked&&phase==='browsing'&&!isSceneLocked();
+      dom.letterBtn.classList.toggle('is-visible',visible);
+      dom.letterBtn.setAttribute('aria-hidden',String(!visible));
+      dom.letterBtn.tabIndex=visible? 0:-1;
+    }
+
+    // 回到抽卡浏览态：把正在展示的牌收回去（跳过防误触冷却）
+    function returnToBrowsing () {
+      if(phase!=='revealed'||isBusy||currentIndex===null) return;
+      cooldownUntil=0;
+      inputLayer.closeReveal();
+    }
+
+    function openLetter () {
+      if(letterOpen) return;
+
+      letterOpen=true;
+      letterUnlocked=true;   // 任何时候进过信，都算解锁
+
+      // 完成弹窗若还开着，先收起来；关信后不回弹
+      if(completionOpen) {
+        completionOpen=false;
+        dom.completion.classList.remove('is-open');
+        dom.completion.setAttribute('aria-hidden','true');
+      }
+
+      // 展示中的牌在信后面收回去，关信时已经是浏览态
+      returnToBrowsing();
+
+      freezeRing();
+      dom.letter.classList.add('is-open');
+      dom.letter.setAttribute('aria-hidden','false');
+      if(dom.letterScroll) {
+        dom.letterScroll.scrollTop=0;
+        dom.letterPanel.focus({preventScroll: true});
+      }
+      updateLetterButton();
+      setLiveMessage('信已展开，点击空白处收起。');
+    }
+
+    function closeLetter () {
+      if(!letterOpen) return;
+
+      letterOpen=false;
+      dom.letter.classList.remove('is-open');
+      dom.letter.setAttribute('aria-hidden','true');
+      updateLetterButton();
+
+      // 已经是浏览态：恢复转盘（光点在页面里就会继续吸附）
+      if(phase==='browsing'&&!isBusy) requestRingFrame();
+
+      // 焦点回到刚刚的入口按钮（如果它已经可见）
+      if(dom.letterBtn.classList.contains('is-visible')) {
+        dom.letterBtn.focus({preventScroll: true});
+      }
+
+      setLiveMessage('已收起信，回到牌阵。');
+    }
+
+    function openCompletion () {
+      if(completionOpen) return;
+      completionOpen=true;
+      completionCelebrated=true;
+      letterUnlocked=true;   // 完成弹窗首次出现 = 解锁“查看信”
+
+      dom.completion.classList.add('is-open');
+      dom.completion.setAttribute('aria-hidden','false');
+      setRevealHint('','',false);
+      dom.nextChapterLink.focus({preventScroll: true});
+      updateLetterButton();
+      setLiveMessage('全部卡牌已揭晓。是否开启下一章？');
+    }
+
+    function closeCompletion () {
+      if(!completionOpen) return;
+      completionOpen=false;
+
+      dom.completion.classList.remove('is-open');
+      dom.completion.setAttribute('aria-hidden','true');
+
+      // “再回味一下”：关闭弹窗并回到抽卡浏览态
+      returnToBrowsing();
+      updateLetterButton();
+
+      setLiveMessage('已关闭完成提示，回到牌阵。');
+    }
+
+    /* ============================================================
+       11. 输入层接口
+       ------------------------------------------------------------
+       鼠标事件只调用这里的方法。之后接入摄像头手势 / 触摸滑动时，
+       只需要用另一套输入源调用同样三个方法，不需要改动核心状态机。
+       ============================================================ */
+    const inputLayer={
+      /**
+       * 聚焦某张牌；传 null 取消所有聚焦。
+       * @param {number|null} index
+       */
+      focusCard (index) {
+        return focusCard(index);
+      },
+
+      /**
+       * 尝试抽取当前聚焦的牌。
+       * 未充能满的牌不会翻开；已抽过的牌可直接重温。
+       */
+      triggerDraw () {
+        if(phase!=='browsing'||isBusy||isSceneLocked()) return false;
+        if(focusedIndex===null) return false;
+        return revealCard(focusedIndex);
+      },
+
+      /**
+       * 关闭当前展示，回到牌阵。
+       * 冷却期内、或状态不是 revealed 时不会执行。
+       */
+      closeReveal () {
+        return closeReveal();
+      }
+    };
+
+    // 暴露给页面外部 / 后续手势输入层使用
+    window.TarotInput=inputLayer;
+
+    /* ============================================================
+       12. 事件绑定 / 初始化
+       ============================================================ */
+    function bindGlobalEvents () {
+      // [阶段二] 统一点击入口：
+      //  浏览态：点击（牌或空白）= 确认当前吸附牌；未充能满时只提示，不翻开
+      //  展示态：点击牌以外区域收牌，冷却期内不响应，避免误触
+      document.addEventListener('click',(event) => {
+        const target=event.target;
+        const inCard=target instanceof Element&&target.closest('.card')!==null;
+        const inModal=target instanceof Element&&target.closest('.completion')!==null;
+        const inLetterPanel=target instanceof Element&&target.closest('.letter__panel')!==null;
+
+        // 信弹窗：点内容本身不关，只有点弹窗外空白才关；期间不做任何牌阵交互
+        if(letterOpen) {
+          if(!inLetterPanel) closeLetter();
+          return;
+        }
+
+        if(inModal) return;
+
+        if(phase==='revealed') {
+          if(isBusy||inCard) return;
+          if(performance.now()<cooldownUntil) return;
+          inputLayer.closeReveal();
+          return;
+        }
+
+        // 只有已经吸附选中某张牌时，点击才代表“翻开”（未选中的牌阵旋转中点击无效）
+        if(phase==='browsing'&&!isBusy&&focusedIndex!==null) {
+          inputLayer.triggerDraw();
+        }
+      });
+
+      document.addEventListener('keydown',(event) => {
+        if(event.key==='Escape') {
+          // 信弹窗优先（它盖在最上层）
+          if(letterOpen) {
+            event.preventDefault();
+            closeLetter();
+            return;
+          }
+
+          if(completionOpen) {
+            event.preventDefault();
+            closeCompletion();
+            return;
+          }
+
+          if(phase==='revealed'&&!isBusy&&performance.now()>=cooldownUntil) {
+            event.preventDefault();
+            inputLayer.closeReveal();
+          }
+        }
+
+        // 简单焦点约束：弹窗打开时 Tab 只在两个按钮之间循环
+        if(event.key==='Tab'&&completionOpen) {
+          const focusables=[dom.nextChapterLink,dom.completionClose];
+          const current=document.activeElement;
+          const currentIndexInModal=focusables.indexOf(current);
+
+          if(currentIndexInModal===-1) {
+            event.preventDefault();
+            focusables[0].focus();
+            return;
+          }
+
+          const direction=event.shiftKey? -1:1;
+          const nextIndex=(currentIndexInModal+direction+focusables.length)%focusables.length;
+          event.preventDefault();
+          focusables[nextIndex].focus();
+        }
+      });
+
+      dom.completionClose.addEventListener('click',closeCompletion);
+
+      // “开启下一章” → 打开信弹窗（不跳转）
+      dom.nextChapterLink.addEventListener('click',(event) => {
+        event.preventDefault();
+        openLetter();
+      });
+
+      // 右上角“查看信”
+      dom.letterBtn.addEventListener('click',(event) => {
+        event.stopPropagation();   // 别被当成“点空白确认抽取”
+        openLetter();
+      });
+
+      dom.completion.addEventListener('click',(event) => {
+        // 点击弹窗外的遮罩不关闭，避免误触；只有“再回味一下”负责关闭
+        event.stopPropagation();
+      });
+
+      window.addEventListener('resize',() => {
+        if(layoutFrame) cancelAnimationFrame(layoutFrame);
+        layoutFrame=requestAnimationFrame(() => {
+          layoutFrame=0;
+          layoutRing();   // [转盘] 视口变化时重算圆盘几何
+
+          if(phase==='revealed'&&!isBusy&&currentIndex!==null) {
+            centerDisplayedCard();
+          }
+        });
+      });
+
+      // 页面切回前台时，若冷却已结束，让提示恢复为可关闭文案
+      document.addEventListener('visibilitychange',() => {
+        if(
+          document.visibilityState==='visible'&&
+          phase==='revealed'&&
+          !isBusy&&
+          performance.now()>=cooldownUntil
+        ) {
+          setRevealHint('星牌已为你展开','轻点空白处，收起这张牌',true);
+        }
+      });
+    }
+
+    function init () {
+      applyCssConfig();
+      buildStarfield();
+      createAllCards();
+      layoutRing();          // [转盘] 把 16 张牌钉到圆盘上
+      updateProgress();
+      bindGlobalEvents();
+      bindPointerEvents();   // [阶段二] 光点跟随 + 连续速度模型 + 吸附
+      bindGestureControls(); // [阶段三] 手势 / 鼠标模式切换控件
+
+      // [阶段三] 默认进入手势模式；摄像头不可用时会自动回退鼠标模式
+      setControlMode('gesture');
+      syncModeUI();
+
+      // [信] 每次加载都从头开始：按钮隐藏、解锁标记清零
+      letterUnlocked=false;
+      letterOpen=false;
+      updateLetterButton();
+    }
+
+    /* ============================================================
+       手势输入层（阶段三已接入）
+       ------------------------------------------------------------
+       输入源有两套，但都只做同一件事：把光点位置交给
+       applyPointerPosition()，手势边沿交给 inputLayer。
+       转盘 / 吸附 / 选中 / 充能 / 展示态冻结全部复用同一套逻辑，
+       没有为手势另写分支。
+       ============================================================ */
+
+    init();
+  </script>
+</body>
+
+</html>
